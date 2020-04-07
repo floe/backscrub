@@ -87,6 +87,7 @@ As usual: pull requests welcome.
   - Only works with Linux, because that's what I use.
   - Needs a webcam that can produce raw YUYV data (but extending to the common YUV420 format should be trivial)
   - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just 10 FPS.
+  - Uses stock Deeplab v3+ network. Maybe re-training with only "person" and "background" classes could improve performance?
   
 ## Other links
 
