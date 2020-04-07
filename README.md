@@ -13,7 +13,7 @@ This whole shebang involves three main steps with varying difficulty:
 
 ### Attempt 0: Depth camera (Intel Realsense)
 
-I've been working a lot with depth cameras previously, also for background segmentation (see [SurfaceStreams](https://github.com/floe/surfacestreams/)), so I just grabbed a leftover RealSense camera from the lab and gave it a shot. However, the depth data in a cluttered office environment is quite noisy, and no matter how I tweaked the camera settings, it could not produce any depth data for my hair...? I looked like a medieval monk who had the top of his head chopped off, so ... next.
+I've been working a lot with depth cameras previously, also for background segmentation (see [SurfaceStreams](https://github.com/floe/surface-streams)), so I just grabbed a leftover RealSense camera from the lab and gave it a shot. However, the depth data in a cluttered office environment is quite noisy, and no matter how I tweaked the camera settings, it could not produce any depth data for my hair...? I looked like a medieval monk who had the top of his head chopped off, so ... next.
 
 ### Attempt 1: OpenCV BackgroundSubtractor
 
@@ -33,7 +33,7 @@ I had a look at the corresponding [Python example](https://github.com/tensorflow
 
 ## Replace Background
 
-This is basically one line of code: `bg.copyTo(raw,mask);` Told you that's the easy part.
+This is basically one line of code with OpenCV: `bg.copyTo(raw,mask);` Told you that's the easy part.
 
 ## Virtual Video Device
 
@@ -56,7 +56,7 @@ The dataflow through the whole program is roughly as follows:
       - convert result to binary mask for class "person"
     - upscale mask to raw image size
     - copy background over raw image with mask (see above)
-    - `write(2)` data to virtual video device
+    - `write()` data to virtual video device
 
 (*) these are required input parameters for DeepLab v3+
 
@@ -74,6 +74,13 @@ Tested with the following software:
   - Skype 8.58.0.93 (works)
   - guvcview 2.0.5 (works)
   - Chrome 80.0.3987.87 (b0rks, might be an issue with v4l2loopback)
+  
+## Limitations
+
+As usual: pull requests welcome.
+  - Only works with Linux, because that's what I use.
+  - Needs a webcam that can produce raw YUYV pixel format. Extending to the common YUV420 format should be trivial.
+  - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just 10 FPS.
   
 ### Other links
 
