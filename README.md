@@ -37,7 +37,7 @@ This is basically one line of code with OpenCV: `bg.copyTo(raw,mask);` Told you 
 
 ## Virtual Video Device
 
-I'm using [v4l2loopback](https://github.com/umlaeute/v4l2loopback) to pipe the data from my userspace tool into any software that can open a V4L2 device. This isn't too hard because of the nice examples, but there are some catches, most notably color space. It took quite some trial and error to find a common pixel format that's accepted by Firefox, Skype, and guvcview, and that is `YUYV`. Nicely enough, my webcam can output YUYV directly as raw data, so that does save me some colorspace conversions.
+I'm using [v4l2loopback](https://github.com/umlaeute/v4l2loopback) to pipe the data from my userspace tool into any software that can open a V4L2 device. This isn't too hard because of the nice examples, but there are some catches, most notably color space. It took quite some trial and error to find a common pixel format that's accepted by Firefox, Skype, and guvcview, and that is [YUYV](https://www.linuxtv.org/downloads/v4l-dvb-apis-old/V4L2-PIX-FMT-YUYV.html). Nicely enough, my webcam can output YUYV directly as raw data, so that does save me some colorspace conversions.
 
 ## End Result
 
@@ -82,6 +82,6 @@ As usual: pull requests welcome.
   - Needs a webcam that can produce raw YUYV pixel format. Extending to the common YUV420 format should be trivial.
   - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just 10 FPS.
   
-### Other links
+## Other links
 
 Firefox preferred formats: https://dxr.mozilla.org/mozilla-central/source/media/webrtc/trunk/webrtc/modules/video_capture/linux/video_capture_linux.cc#142-159
