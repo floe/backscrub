@@ -44,7 +44,7 @@ I'm using [v4l2loopback](https://github.com/umlaeute/v4l2loopback) to pipe the d
 The dataflow through the whole program is roughly as follows:
 
   - init
-    - load background image, convert to YUYV
+    - load background.png, convert to YUYV
     - load DeepLab v3+ network, initialize TFLite
     - setup V4L2 Loopback device (w,h,YUYV)
   - loop
@@ -78,6 +78,8 @@ Tested with the following software:
 ## Limitations
 
 As usual: pull requests welcome.
+  - Resolution is hardcoded to 640x480 (lowest common denominator).
+  - Background image size needs to match camera resolution.
   - Only works with Linux, because that's what I use.
   - Needs a webcam that can produce raw YUYV pixel format. Extending to the common YUV420 format should be trivial.
   - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just 10 FPS.
