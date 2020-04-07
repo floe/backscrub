@@ -11,6 +11,10 @@ This whole shebang involves three main steps with varying difficulty:
 
 ## Finding person in video
 
+### Attempt 0: Depth camera (Intel Realsense)
+
+I've been working a lot with depth cameras previously, also for background segmentation (see [SurfaceStreams](https://github.com/floe/surfacestreams/)), so I just grabbed a leftover RealSense camera from the lab and gave it a shot. However, the depth data in a cluttered office environment is quite noisy, and no matter how I tweaked the camera settings, it could not produce any depth data for my hair...? I looked like a medieval monk who had the top of his head chopped off, so ... next.
+
 ### Attempt 1: OpenCV BackgroundSubtractor
 
 See https://docs.opencv.org/3.4/d1/dc5/tutorial_background_subtraction.html for tutorial.
@@ -25,7 +29,7 @@ Works okay-ish, but obviously only detects the face, and not the rest of the per
 
 I've heard good things about this deep learning stuff, so let's try that. I first had to find my way through a pile of frameworks (Keras, Tensorflow, PyTorch, etc.), but after I found a ready-made model for semantic segmentation based on Tensorflow Lite ([DeepLab v3+](https://tfhub.dev/tensorflow/lite-model/deeplabv3/1/default/1)), I settled on that.
 
-I had a look at the corresponding [Python example](), [C++ example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/examples/label_image), and [Android example](), and based on those, I first cobbled together a [Python demo](). That was running at about 2.5 FPS, which is really excruciatingly slow, so I built a [C++ version]() which manages 10 FPS without too much hand optimization. Good enough.
+I had a look at the corresponding [Python example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/examples/python/label_image.py), [C++ example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/examples/label_image), and [Android example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android), and based on those, I first cobbled together a [Python demo](). That was running at about 2.5 FPS, which is really excruciatingly slow, so I built a [C++ version]() which manages 10 FPS without too much hand optimization. Good enough.
 
 ## Replace Background
 
@@ -33,7 +37,7 @@ This is basically one line of code: `bg.copyTo(raw,mask);` Told you that's the e
 
 ## Virtual Video Device
 
-I'm using [v4l2loopback][https://github.com/umlaeute/v4l2loopback] to pipe the data from my userspace tool into any software that can open a V4L2 device. This isn't too hard because of the nice examples, but there are some catches, most notably color space. It took quite some trial and error to find a common pixel format that's accepted by Firefox, Skype, and guvcview, and that is `YUYV`. Nicely enough, my webcam can output YUYV directly as raw data, so that does save me some colorspace conversions.
+I'm using [v4l2loopback](https://github.com/umlaeute/v4l2loopback) to pipe the data from my userspace tool into any software that can open a V4L2 device. This isn't too hard because of the nice examples, but there are some catches, most notably color space. It took quite some trial and error to find a common pixel format that's accepted by Firefox, Skype, and guvcview, and that is `YUYV`. Nicely enough, my webcam can output YUYV directly as raw data, so that does save me some colorspace conversions.
 
 ## End Result
 
@@ -56,8 +60,21 @@ The dataflow through the whole program is roughly as follows:
 
 (*) these are required input parameters for DeepLab v3+
 
-### Links
+## Requirements
 
-Model: https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite
+Tested with the following dependencies:
+  - Ubuntu 18.04.5, x86-64
+  - Linux kernel 4.15 (stock package)
+  - OpenCV 3.2.0 (stock package)
+  - V4L2-Loopback 0.10.0 (stock package)
+  - Tensorflow Lite 2.1.0 (from [repo]())
+  
+Tested with the following software:
+  - Firefox 74.0.1 (works)
+  - Skype 8.58.0.93 (works)
+  - guvcview 2.0.5 (works)
+  - Chrome 80.0.3987.87 (b0rks)
+  
+### Other links
 
 Firefox preferred formats: https://dxr.mozilla.org/mozilla-central/source/media/webrtc/trunk/webrtc/modules/video_capture/linux/video_capture_linux.cc#142-159
