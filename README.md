@@ -81,10 +81,11 @@ Tested with the following software:
 ## Limitations
 
 As usual: pull requests welcome.
-  - Resolution is hardcoded to 640x480 (lowest common denominator).
+  - The project name isn't catchy enough. Help me find a nice [backronym](https://en.wikipedia.org/wiki/Backronym).
+  - Resolution is currently hardcoded to 640x480 (lowest common denominator).
   - Background image size needs to match camera resolution.
   - Only works with Linux, because that's what I use.
-  - Needs a webcam that can produce raw YUYV pixel format. Extending to the common YUV420 format should be trivial.
+  - Needs a webcam that can produce raw YUYV data (but extending to the common YUV420 format should be trivial)
   - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just 10 FPS.
   
 ## Other links
