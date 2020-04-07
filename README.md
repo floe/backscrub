@@ -1,4 +1,4 @@
-# DeepSeg
+# DeepBackSub
 
 ## Virtual Video Device for Background Replacement with Deep Semantic Segmentation
 
@@ -29,7 +29,7 @@ Works okay-ish, but obviously only detects the face, and not the rest of the per
 
 I've heard good things about this deep learning stuff, so let's try that. I first had to find my way through a pile of frameworks (Keras, Tensorflow, PyTorch, etc.), but after I found a ready-made model for semantic segmentation based on Tensorflow Lite ([DeepLab v3+](https://tfhub.dev/tensorflow/lite-model/deeplabv3/1/default/1)), I settled on that.
 
-I had a look at the corresponding [Python example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/examples/python/label_image.py), [C++ example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/examples/label_image), and [Android example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android), and based on those, I first cobbled together a [Python demo](). That was running at about 2.5 FPS, which is really excruciatingly slow, so I built a [C++ version]() which manages 10 FPS without too much hand optimization. Good enough.
+I had a look at the corresponding [Python example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/examples/python/label_image.py), [C++ example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/examples/label_image), and [Android example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android), and based on those, I first cobbled together a [Python demo](https://github.com/floe/deepbacksub/blob/master/deepseg.py). That was running at about 2.5 FPS, which is really excruciatingly slow, so I built a [C++ version](https://github.com/floe/deepbacksub/blob/master/deepseg.cc) which manages 10 FPS without too much hand optimization. Good enough.
 
 ## Replace Background
 
@@ -67,13 +67,13 @@ Tested with the following dependencies:
   - Linux kernel 4.15 (stock package)
   - OpenCV 3.2.0 (stock package)
   - V4L2-Loopback 0.10.0 (stock package)
-  - Tensorflow Lite 2.1.0 (from [repo]())
+  - Tensorflow Lite 2.1.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.1.0/tensorflow/lite))
   
 Tested with the following software:
   - Firefox 74.0.1 (works)
   - Skype 8.58.0.93 (works)
   - guvcview 2.0.5 (works)
-  - Chrome 80.0.3987.87 (b0rks)
+  - Chrome 80.0.3987.87 (b0rks, might be an issue with v4l2loopback)
   
 ### Other links
 
