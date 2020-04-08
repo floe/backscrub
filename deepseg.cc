@@ -131,6 +131,9 @@ int main(int argc, char* argv[]) {
 	cv::Mat mask = cv::Mat::ones(height,width,CV_8UC1);
 	cv::Mat mroi = mask(roidim);
 
+	// erosion/dilation element
+	cv::Mat element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
+
 	const int cnum = labels.size();
 	const int pers = std::find(labels.begin(),labels.end(),"person") - labels.begin();
 
@@ -171,6 +174,11 @@ int main(int argc, char* argv[]) {
 			// set mask to 0 where class == person
 			out[n] = (maxpos==pers ? 0 : 255);
 		}
+
+		// denoise
+		cv::Mat tmpbuf;
+		cv::dilate(ofinal,tmpbuf,element);
+		cv::erode(tmpbuf,ofinal,element);
 
 		// scale up into full-sized mask
 		cv::resize(ofinal,mroi,cv::Size(raw.rows,raw.rows));
