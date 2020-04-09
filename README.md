@@ -57,6 +57,7 @@ The dataflow through the whole program is roughly as follows:
       - convert to RGB (*)
       - run DeepLab v3+
       - convert result to binary mask for class "person"
+      - denoise mask using erode/dilate
     - upscale mask to raw image size
     - copy background over raw image with mask (see above)
     - `write()` data to virtual video device
