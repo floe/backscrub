@@ -71,6 +71,9 @@ Tested with the following dependencies:
   - OpenCV 3.2.0 (stock package)
   - V4L2-Loopback 0.10.0 (stock package)
   - Tensorflow Lite 2.1.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.1.0/tensorflow/lite))
+    - Ultra-short build guide for Tensorflow Lite C++ library: clone repo above, then...
+      - run `./tensorflow/lite/tools/make/download_dependencies.sh`
+      - run `./tensorflow/lite/tools/make/build_lib.sh`
   
 Tested with the following software:
   - Firefox 74.0.1 (works)
@@ -86,7 +89,7 @@ As usual: pull requests welcome.
   - Background image size needs to match camera resolution.
   - Only works with Linux, because that's what I use.
   - Needs a webcam that can produce raw YUYV data (but extending to the common YUV420 format should be trivial)
-  - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just 10 FPS.
+  - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just VGA @ 10 FPS.
   - Uses stock Deeplab v3+ network. Maybe re-training with only "person" and "background" classes could improve performance?
 
 ## Fixed
