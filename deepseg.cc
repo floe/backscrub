@@ -90,8 +90,9 @@ int main(int argc, char* argv[]) {
 	int width  = 640;
 	int height = 480;
 
-  const char* filename = "deeplabv3_257_mv_gpu.tflite";
+	const char* filename = "deeplabv3_257_mv_gpu.tflite";
 	cv::Mat bg = convert_rgb_to_yuyv( cv::imread("background.png") );
+	cv::resize(bg,bg,cv::Size(width,height));
 	int lbfd = loopback_init("/dev/video1",width,height,debug);
 
   cv::VideoCapture cap(0);
