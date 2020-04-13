@@ -95,8 +95,8 @@ int main(int argc, char* argv[]) {
 	cv::resize(bg,bg,cv::Size(width,height));
 	int lbfd = loopback_init("/dev/video1",width,height,debug);
 
-  cv::VideoCapture cap(0);
-  TFLITE_MINIMAL_CHECK(cap.isOpened());
+	cv::VideoCapture cap(0 + CV_CAP_V4L2);
+	TFLITE_MINIMAL_CHECK(cap.isOpened());
 
   cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
   cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
