@@ -100,7 +100,7 @@ int main(int argc, char* argv[]) {
 
   cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
   cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-  cap.set(CV_CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
+  cap.set(CV_CAP_PROP_MODE, CV_CAP_MODE_YUYV);
   cap.set(CV_CAP_PROP_CONVERT_RGB, false);
 
   // Load model
