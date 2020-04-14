@@ -7,3 +7,6 @@ TFLITE=$(TFBASE)/tensorflow/lite/tools/make/
 
 deepseg: deepseg.cc loopback.cc
 	g++ $^ -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-math-optimizations -I $(TFLITE)/downloads/absl -I $(TFBASE) -I $(TFLITE)/downloads/flatbuffers/include/ -L $(TFLITE)/gen/linux_x86_64/lib/ $(shell pkg-config --libs --cflags opencv) -Wall -ltensorflow-lite -lrt -ldl -pthread -o $@
+
+clean:
+	-rm deepseg
