@@ -80,6 +80,7 @@ Tested with the following software:
   - Firefox 74.0.1 (works)
   - Skype 8.58.0.93 (works)
   - guvcview 2.0.5 (works)
+  - Microsoft Teams 1.3.00.5153 (works)
   - Chrome 80.0.3987.87 (b0rks, might be an issue with v4l2loopback)
   
 ## Limitations/Extensions
