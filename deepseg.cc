@@ -101,24 +101,24 @@ int main(int argc, char* argv[]) {
 	cv::VideoCapture cap(0 + CV_CAP_V4L2);
 	TFLITE_MINIMAL_CHECK(cap.isOpened());
 
-  cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
-  cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-  cap.set(CV_CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
-  cap.set(CV_CAP_PROP_CONVERT_RGB, false);
+	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
+	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+	cap.set(CV_CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
+	cap.set(CV_CAP_PROP_CONVERT_RGB, false);
 
-  // Load model
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromFile(filename);
-  TFLITE_MINIMAL_CHECK(model != nullptr);
+	// Load model
+	std::unique_ptr<tflite::FlatBufferModel> model =
+		tflite::FlatBufferModel::BuildFromFile(filename);
+	TFLITE_MINIMAL_CHECK(model != nullptr);
 
-  // Build the interpreter
-  tflite::ops::builtin::BuiltinOpResolver resolver;
-  InterpreterBuilder builder(*model, resolver);
-  builder(&interpreter);
-  TFLITE_MINIMAL_CHECK(interpreter != nullptr);
+	// Build the interpreter
+	tflite::ops::builtin::BuiltinOpResolver resolver;
+	InterpreterBuilder builder(*model, resolver);
+	builder(&interpreter);
+	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
 
-  // Allocate tensor buffers.
-  TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
+	// Allocate tensor buffers.
+	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
 
 	// set interpreter params
 	interpreter->SetNumThreads(2);
@@ -155,10 +155,10 @@ int main(int argc, char* argv[]) {
 		cv::cvtColor(in_u8_yuv,in_u8_rgb,CV_YUV2RGB_YUYV);
 		// TODO: can convert directly to float?
 
-		// convert to float and normalize
+		// convert to float and normalize values to [-1;1]
 		in_u8_rgb.convertTo(input,CV_32FC3,1.0/128.0,-1.0);
 
-	  // Run inference
+		// Run inference
 		TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
 
 		// create Mat for small mask
