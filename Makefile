@@ -3,8 +3,7 @@ CFLAGS = -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-mat
 LDFLAGS = -lrt -ldl
 
 # TensorFlow
-TFBASE=../tensorflow
-#TFBASE=/tensorflow_src
+TFBASE=../tensorflow.git
 TFLITE=$(TFBASE)/tensorflow/lite/tools/make/
 CFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include
 LDFLAGS += -L $(TFLITE)/gen/linux_x86_64/lib/ -ltensorflow-lite
