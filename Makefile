@@ -3,7 +3,8 @@ CFLAGS = -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-mat
 LDFLAGS = -lrt -ldl
 
 # TensorFlow
-TFBASE=../tensorflow.git/
+TFBASE=../tensorflow
+#TFBASE=/tensorflow_src
 TFLITE=$(TFBASE)/tensorflow/lite/tools/make/
 CFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include
 LDFLAGS += -L $(TFLITE)/gen/linux_x86_64/lib/ -ltensorflow-lite
@@ -25,6 +26,8 @@ endif
 
 deepseg: deepseg.cc loopback.cc
 	g++ $^ ${CFLAGS} ${LDFLAGS} -o $@
+
+all: deepseg
 
 clean:
 	-rm deepseg

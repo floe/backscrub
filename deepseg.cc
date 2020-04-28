@@ -54,8 +54,8 @@ using namespace tflite;
 
 #define TFLITE_MINIMAL_CHECK(x)                              \
   if (!(x)) {                                                \
-    fprintf(stderr, "Error at %s:%d\n", __FILE__, __LINE__); \
-    exit(1);                                                 \
+	fprintf(stderr, "Error at %s:%d\n", __FILE__, __LINE__); \
+	exit(1);                                                 \
   }
 
 std::unique_ptr<Interpreter> interpreter;
@@ -89,16 +89,49 @@ int main(int argc, char* argv[]) {
 	printf("https://github.com/floe/deepseg\n");
 
 	int debug  = 0;
+	int threads= 2;
 	int width  = 640;
 	int height = 480;
+	const char *back = "background.png";
+	const char *vcam = "/dev/video0";
+	const char *ccam = "/dev/video1";
 
-	const char* filename = "deeplabv3_257_mv_gpu.tflite";
-	cv::Mat bg = cv::imread("background.png");
+	const char* modelname = "deeplabv3_257_mv_gpu.tflite";
+
+	for (int arg=1; arg<argc; arg++) {
+		if (strncmp(argv[arg], "-?", 2)==0) {
+			fprintf(stderr, "usage: deepseg [-?] [-d] [-c <capture:/dev/video1>] [-v <vcam:/dev/video0>] [-w <width:640>] [-h <height:480>] [-t <threads:2>] [-b <background.png>]\n");
+			exit(0);
+		} else if (strncmp(argv[arg], "-d", 2)==0) {
+			++debug;
+		} else if (strncmp(argv[arg], "-v", 2)==0) {
+			vcam = argv[++arg];
+		} else if (strncmp(argv[arg], "-c", 2)==0) {
+			ccam = argv[++arg];
+		} else if (strncmp(argv[arg], "-b", 2)==0) {
+			back = argv[++arg];
+		} else if (strncmp(argv[arg], "-w", 2)==0) {
+			sscanf(argv[++arg], "%d", &width);
+		} else if (strncmp(argv[arg], "-h", 2)==0) {
+			sscanf(argv[++arg], "%d", &height);
+		} else if (strncmp(argv[arg], "-t", 2)==0) {
+			sscanf(argv[++arg], "%d", &threads);
+		}
+	}
+	printf("debug:  %d\n", debug);
+	printf("ccam:   %s\n", ccam);
+	printf("vcam:   %s\n", vcam);
+	printf("width:  %d\n", width);
+	printf("height: %d\n", height);
+	printf("back:   %s\n", back);
+	printf("threads:%d\n", threads);
+
+	cv::Mat bg = cv::imread(back);
 	cv::resize(bg,bg,cv::Size(width,height));
 	bg = convert_rgb_to_yuyv( bg );
-	int lbfd = loopback_init("/dev/video1",width,height,debug);
+	int lbfd = loopback_init(vcam,width,height,debug);
 
-	cv::VideoCapture cap(0 + CV_CAP_V4L2);
+	cv::VideoCapture cap(ccam, CV_CAP_V4L2);
 	TFLITE_MINIMAL_CHECK(cap.isOpened());
 
 	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
@@ -108,7 +141,7 @@ int main(int argc, char* argv[]) {
 
 	// Load model
 	std::unique_ptr<tflite::FlatBufferModel> model =
-		tflite::FlatBufferModel::BuildFromFile(filename);
+		tflite::FlatBufferModel::BuildFromFile(modelname);
 	TFLITE_MINIMAL_CHECK(model != nullptr);
 
 	// Build the interpreter
@@ -121,7 +154,7 @@ int main(int argc, char* argv[]) {
 	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
 
 	// set interpreter params
-	interpreter->SetNumThreads(2);
+	interpreter->SetNumThreads(threads);
 	interpreter->SetAllowFp16PrecisionForFp32(true);
 
 	// get input and output tensor as cv::Mat
@@ -195,11 +228,13 @@ int main(int argc, char* argv[]) {
 		int ret = write(lbfd,raw.data,framesize);
 		TFLITE_MINIMAL_CHECK(ret == framesize);
 
-		if (!debug) { printf("."); fflush(0); continue; }
+		if (!debug) { printf("."); fflush(stdout); continue; }
 
 		int e2 = cv::getTickCount();
 		float t = (e2-e1)/cv::getTickFrequency();
-		printf("elapsed: %f\n",t);
+		printf("\relapsed:%f   ",t);
+		fflush(stdout);
+		if (debug < 2) continue;
 
 		cv::Mat test;
 		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
