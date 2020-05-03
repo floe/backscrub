@@ -27,8 +27,8 @@ int loopback_init(const char* device, int w, int h, int debug) {
 	struct v4l2_capability vid_caps;
 	struct v4l2_format vid_format;
 
-	size_t linewidth = w * 2;
-	size_t framesize = h * linewidth;
+	// YUV420 = 1 byte per pixel
+	size_t framesize = w * h;
 
 	int fdwr = 0;
 	int ret_code = 0;
@@ -47,10 +47,10 @@ int loopback_init(const char* device, int w, int h, int debug) {
 	vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	vid_format.fmt.pix.width = w;
 	vid_format.fmt.pix.height = h;
-	vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+	vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
 	vid_format.fmt.pix.sizeimage = framesize;
 	vid_format.fmt.pix.field = V4L2_FIELD_NONE;
-	vid_format.fmt.pix.bytesperline = linewidth;
+	vid_format.fmt.pix.bytesperline = w;
 	vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
 
 	ret_code = ioctl(fdwr, VIDIOC_S_FMT, &vid_format);
