@@ -85,7 +85,8 @@ std::vector<std::string> labels = { "background", "aeroplane", "bicycle", "bird"
 // threaded capture shared state
 typedef struct {
 	cv::VideoCapture *cap;
-	cv::Mat *frm;
+	cv::Mat *grab;
+	cv::Mat *raw;
 	int64 cnt;
 	pthread_mutex_t lock;
 } capinfo_t;
@@ -94,12 +95,12 @@ typedef struct {
 void *grab_thread(void *arg) {
 	capinfo_t *ci = (capinfo_t *)arg;
 	bool done = false;
-	// while we have a capture frame.. grab frames
+	// while we have a grab frame.. grab frames
 	while (!done) {
 		ci->cap->grab();
 		pthread_mutex_lock(&ci->lock);
-		if (ci->frm!=NULL)
-			ci->cap->retrieve(*ci->frm);
+		if (ci->grab!=NULL)
+			ci->cap->retrieve(*ci->grab);
 		else
 			done = true;
 		ci->cnt++;
@@ -202,8 +203,9 @@ int main(int argc, char* argv[]) {
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
 	pthread_t grabber;
-	cv::Mat frm;
-	capinfo_t capinfo = { &cap, &frm, 0, PTHREAD_MUTEX_INITIALIZER };
+	cv::Mat buf1;
+	cv::Mat buf2;
+	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, PTHREAD_MUTEX_INITIALIZER };
 	if (pthread_create(&grabber, NULL, grab_thread, &capinfo)) {
 		perror("creating grabber thread");
 		exit(1);
@@ -216,12 +218,16 @@ int main(int argc, char* argv[]) {
 
 		int e1 = cv::getTickCount();
 
-		// copy out current frame from capture thread
-		cv::Mat raw;
+		// switch buffer pointers in capture thread
 		pthread_mutex_lock(&capinfo.lock);
-		capinfo.frm->copyTo(raw);
+		cv::Mat *tmat = capinfo.grab;
+		capinfo.grab = capinfo.raw;
+		capinfo.raw = tmat;
 		pthread_mutex_unlock(&capinfo.lock);
-		cv::Mat roi = raw(roidim);
+		// we can now guarantee capinfo.raw will remain unchanged while we process it..
+
+		// map ROI
+		cv::Mat roi = (*capinfo.raw)(roidim);
 
 		// resize ROI to input size
 		cv::Mat in_u8_yuv, in_u8_rgb;
@@ -259,14 +265,14 @@ int main(int argc, char* argv[]) {
 		cv::erode(tmpbuf,ofinal,element);
 
 		// scale up into full-sized mask
-		cv::resize(ofinal,mroi,cv::Size(raw.rows,raw.rows));
+		cv::resize(ofinal,mroi,cv::Size(capinfo.raw->rows,capinfo.raw->rows));
 
 		// copy background over raw cam image using mask
-		bg.copyTo(raw,mask);
+		bg.copyTo((*capinfo.raw),mask);
 
 		// write frame to v4l2loopback
-		int framesize = raw.step[0]*raw.rows;
-		int ret = write(lbfd,raw.data,framesize);
+		int framesize = capinfo.raw->step[0]*capinfo.raw->rows;
+		int ret = write(lbfd,capinfo.raw->data,framesize);
 		TFLITE_MINIMAL_CHECK(ret == framesize);
 
 		if (!debug) { printf("."); fflush(stdout); continue; }
@@ -278,12 +284,12 @@ int main(int argc, char* argv[]) {
 		if (debug < 2) continue;
 
 		cv::Mat test;
-		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
+		cv::cvtColor((*capinfo.raw),test,CV_YUV2BGR_YUYV);
 		cv::imshow("output.png",test);
 		if (cv::waitKey(1) == 'q') break;
 	}
 	pthread_mutex_lock(&capinfo.lock);
-	capinfo.frm = NULL;
+	capinfo.grab = NULL;
 	pthread_mutex_unlock(&capinfo.lock);
 
   return 0;
