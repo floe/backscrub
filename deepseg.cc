@@ -225,9 +225,10 @@ int main(int argc, char* argv[]) {
 		capinfo.raw = tmat;
 		pthread_mutex_unlock(&capinfo.lock);
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
+		cv::Mat raw = (*capinfo.raw);
 
 		// map ROI
-		cv::Mat roi = (*capinfo.raw)(roidim);
+		cv::Mat roi = raw(roidim);
 
 		// resize ROI to input size
 		cv::Mat in_u8_yuv, in_u8_rgb;
@@ -265,14 +266,14 @@ int main(int argc, char* argv[]) {
 		cv::erode(tmpbuf,ofinal,element);
 
 		// scale up into full-sized mask
-		cv::resize(ofinal,mroi,cv::Size(capinfo.raw->rows,capinfo.raw->rows));
+		cv::resize(ofinal,mroi,cv::Size(raw.rows,raw.rows));
 
 		// copy background over raw cam image using mask
-		bg.copyTo((*capinfo.raw),mask);
+		bg.copyTo(raw,mask);
 
 		// write frame to v4l2loopback
-		int framesize = capinfo.raw->step[0]*capinfo.raw->rows;
-		int ret = write(lbfd,capinfo.raw->data,framesize);
+		int framesize = raw.step[0]*raw.rows;
+		int ret = write(lbfd,raw.data,framesize);
 		TFLITE_MINIMAL_CHECK(ret == framesize);
 
 		if (!debug) { printf("."); fflush(stdout); continue; }
@@ -284,7 +285,7 @@ int main(int argc, char* argv[]) {
 		if (debug < 2) continue;
 
 		cv::Mat test;
-		cv::cvtColor((*capinfo.raw),test,CV_YUV2BGR_YUYV);
+		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
 		cv::imshow("output.png",test);
 		if (cv::waitKey(1) == 'q') break;
 	}
