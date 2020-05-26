@@ -77,12 +77,27 @@ Tested with the following dependencies:
       - run `./tensorflow/lite/tools/make/build_lib.sh`
   
 Tested with the following software:
-  - Firefox 74.0.1 (works)
-  - Skype 8.58.0.93 (works)
+  - Firefox 
+    - 74.0.1 (works)
+    - 76.0.1 (works)
+  - Skype 
+    - 8.58.0.93 (works)
+    - 8.60.0.76 (works)
   - guvcview 2.0.5 (works)
   - Microsoft Teams 1.3.00.5153 (works)
-  - Chrome 80.0.3987.87 (b0rks, might be an issue with v4l2loopback)
+  - Chrome 81.0.4044.138 (works)
   
+## Usage
+
+First, load the v4l2loopback module (extra settings needed to make Chrome work):
+```
+sudo modprobe v4l2loopback devices=1 max_buffers=2 exclusive_caps=1 card_label="VirtualCam"
+```
+Then, run deepseg (-d for debug, -c for capture device, -v for virtual device):
+```
+./deepseg -d -c /dev/video0 -v /dev/video1
+```
+
 ## Limitations/Extensions
 
 As usual: pull requests welcome.
