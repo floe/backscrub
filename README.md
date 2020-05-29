@@ -83,7 +83,7 @@ Tested with the following software:
   - Skype 
     - 8.58.0.93 (works)
     - 8.60.0.76 (works)
-  - guvcview 2.0.5 (works)
+  - guvcview 2.0.5 (works with parameter `-c read`)
   - Microsoft Teams 1.3.00.5153 (works)
   - Chrome 81.0.4044.138 (works)
   - Zoom 5.0.403652.0509 (works - yes, I'm a hypocrite, I tested it with Zoom after all :-)
