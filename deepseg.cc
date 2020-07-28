@@ -137,6 +137,8 @@ int main(int argc, char* argv[]) {
 			ccam = argv[++arg];
 		} else if (strncmp(argv[arg], "-b", 2)==0) {
 			back = argv[++arg];
+		} else if (strncmp(argv[arg], "-m", 2)==0) {
+			modelname = argv[++arg];
 		} else if (strncmp(argv[arg], "-w", 2)==0) {
 			sscanf(argv[++arg], "%d", &width);
 		} else if (strncmp(argv[arg], "-h", 2)==0) {
@@ -273,8 +275,11 @@ int main(int argc, char* argv[]) {
 
 		// write frame to v4l2loopback
 		int framesize = raw.step[0]*raw.rows;
-		int ret = write(lbfd,raw.data,framesize);
-		TFLITE_MINIMAL_CHECK(ret == framesize);
+		while (framesize > 0) {
+			int ret = write(lbfd,raw.data,framesize);
+			TFLITE_MINIMAL_CHECK(ret > 0);
+			framesize -= ret;
+		}
 
 		if (!debug) { printf("."); fflush(stdout); continue; }
 
