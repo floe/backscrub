@@ -1,5 +1,7 @@
 #! /bin/bash
 
+# originally from https://github.com/ajaichemmanam/simple_bodypix_python/blob/master/get-model.sh
+
 # Exit on any error
 set -e
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd bodypix_mobilenet_float_050_model-stride16
+cd "$1" || exit
 rm -r *.tflite ./savedmodel*
 echo "Converting TFJS to SavedModel..."
 ~/.local/bin/tfjs_graph_converter --output_format tf_saved_model . savedmodel/
