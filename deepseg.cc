@@ -250,6 +250,7 @@ int main(int argc, char* argv[]) {
 		uint8_t* out = (uint8_t*)ofinal.data;
 
 		// find class with maximum probability
+		if (strstr(modelname,"deeplab"))
 		for (unsigned int n = 0; n < output.total(); n++) {
 			float maxval = -10000; int maxpos = 0;
 			for (int i = 0; i < cnum; i++) {
@@ -260,6 +261,11 @@ int main(int argc, char* argv[]) {
 			}
 			// set mask to 0 where class == person
 			out[n] = (maxpos==pers ? 0 : 255);
+		}
+
+		if (strstr(modelname,"body-pix"))
+		for (unsigned int n = 0; n < output.total(); n++) {
+			if (tmp[n] > 0.65) out[n] = 0; else out[n] = 255;
 		}
 
 		// denoise
