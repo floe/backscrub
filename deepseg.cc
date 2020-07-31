@@ -263,8 +263,10 @@ int main(int argc, char* argv[]) {
 			out[n] = (maxpos==pers ? 0 : 255);
 		}
 
+		// threshold probability
 		if (strstr(modelname,"body-pix"))
 		for (unsigned int n = 0; n < output.total(); n++) {
+			// FIXME: hardcoded threshold
 			if (tmp[n] > 0.65) out[n] = 0; else out[n] = 255;
 		}
 
@@ -291,7 +293,7 @@ int main(int argc, char* argv[]) {
 
 		int e2 = cv::getTickCount();
 		float t = (e2-e1)/cv::getTickFrequency();
-		printf("\relapsed:%f   ",t);
+		printf("FPS: %5.2f\r",1.0/t);
 		fflush(stdout);
 		if (debug < 2) continue;
 
