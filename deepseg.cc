@@ -228,6 +228,7 @@ int main(int argc, char* argv[]) {
 		pthread_mutex_unlock(&capinfo.lock);
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
 		cv::Mat raw = (*capinfo.raw);
+		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
 		// map ROI
 		cv::Mat roi = raw(roidim);
