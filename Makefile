@@ -6,7 +6,7 @@ LDFLAGS = -lrt -ldl
 TFBASE=../tensorflow.git
 TFLITE=$(TFBASE)/tensorflow/lite/tools/make/
 CFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include
-LDFLAGS += -L $(TFLITE)/gen/linux_x86_64/lib/ -ltensorflow-lite
+LDFLAGS += -L $(TFLITE)/gen/linux_x86_64/lib/ -ltensorflow-lite -ldl
 
 # git clone -b v2.1.0  https://github.com/tensorflow/tensorflow $(TFBASE)
 # cd $(TFBASE)/tensorflow/lite/tools/make
