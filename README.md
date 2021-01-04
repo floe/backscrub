@@ -2,7 +2,7 @@
 
 ## Virtual Video Device for Background Replacement with Deep Semantic Segmentation
 
-![Screenshots with my stupid grinning face](screenshot.jpg)
+![Screenshots with my stupid grinning face](images/screenshot.jpg)
 (Credits for the nice backgrounds to [Mary Sabell](https://dribbble.com/shots/4686178-Bauhaus-Poster) and [PhotoFunia](https://photofunia.com/effects/retro-wave))
 
 In these modern times where everyone is sitting at home and skype-ing/zoom-ing/webrtc-ing all the time, I was a bit annoyed about always showing my messy home office to the world. Skype has a "blur background" feature, but that starts to get boring after a while (and it's less private than I would personally like). Zoom has some background substitution thingy built-in, but I'm not touching that software with a bargepole (and that feature is not available on Linux anyway). So I decided to look into how to roll my own implementation without being dependent on any particular video conferencing software to support this.

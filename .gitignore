@@ -32,4 +32,4 @@
 *.app
 
 deepseg
-body-pix/bodypix_*
+models/body-pix/bodypix_*
