@@ -26,6 +26,7 @@ limitations under the License.
 #include <opencv2/videoio/videoio_c.h>
 
 #include "loopback.h"
+#include "transpose_conv_bias.h"
 
 // OpenCV helper functions
 cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
@@ -175,6 +176,8 @@ int main(int argc, char* argv[]) {
 
 	// Build the interpreter
 	tflite::ops::builtin::BuiltinOpResolver resolver;
+	// custom op for Google Meet network
+	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
 	InterpreterBuilder builder(*model, resolver);
 	builder(&interpreter);
 	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
@@ -189,11 +192,10 @@ int main(int argc, char* argv[]) {
 	// get input and output tensor as cv::Mat
 	cv::Mat  input = getTensorMat(interpreter->inputs ()[0],debug);
  	cv::Mat output = getTensorMat(interpreter->outputs()[0],debug);
-	TFLITE_MINIMAL_CHECK( input.rows ==  input.cols);
-	TFLITE_MINIMAL_CHECK(output.rows == output.cols);
+	float ratio = (float)input.cols/(float) input.rows;
 
 	// initialize mask and square ROI in center
-	cv::Rect roidim = cv::Rect((width-height)/2,0,height,height);
+	cv::Rect roidim = cv::Rect((width-height/ratio)/2,0,height/ratio,height);
 	cv::Mat mask = cv::Mat::ones(height,width,CV_8UC1);
 	cv::Mat mroi = mask(roidim);
 
@@ -235,7 +237,7 @@ int main(int argc, char* argv[]) {
 
 		// resize ROI to input size
 		cv::Mat in_u8_yuv, in_u8_rgb;
-		cv::resize(roi,in_u8_yuv,cv::Size(input.rows,input.cols));
+		cv::resize(roi,in_u8_yuv,cv::Size(input.cols,input.rows));
 		cv::cvtColor(in_u8_yuv,in_u8_rgb,CV_YUV2RGB_YUYV);
 		// TODO: can convert directly to float?
 
@@ -271,13 +273,31 @@ int main(int argc, char* argv[]) {
 			if (tmp[n] > 0.65) out[n] = 0; else out[n] = 255;
 		}
 
+		// Google Meet segmentation network
+		if (strstr(modelname,"segm_")) {
+			// FIXME: not working yet
+			/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
+			 * tensor for the light model with masks for background
+			 * (channel 0) and person (channel 1) where values are in
+			 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
+			 * softmax across both channels to yield foreground
+			 * probability in [0.0, 1.0]. */
+		for (unsigned int n = 0; n < output.total(); n++) {
+			float exp0 = expf(tmp[2*n  ]);
+			float exp1 = expf(tmp[2*n+1]);
+			float p0 = exp0 / (exp0+exp1);
+			float p1 = exp1 / (exp0+exp1);
+			if (p0 < p1) out[n] = 0; else out[n] = 255;
+		}
+		}
+
 		// denoise
 		cv::Mat tmpbuf;
 		cv::dilate(ofinal,tmpbuf,element);
 		cv::erode(tmpbuf,ofinal,element);
 
 		// scale up into full-sized mask
-		cv::resize(ofinal,mroi,cv::Size(raw.rows,raw.rows));
+		cv::resize(ofinal,mroi,cv::Size(raw.rows/ratio,raw.rows));
 
 		// copy background over raw cam image using mask
 		bg.copyTo(raw,mask);

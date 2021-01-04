@@ -5,7 +5,7 @@ LDFLAGS = -lrt -ldl
 TFBASE=tensorflow/
 TFLITE=$(TFBASE)/tensorflow/lite/tools/make/
 TFLIBS=$(TFLITE)/gen/linux_x86_64/lib/
-CFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include
+CFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include -ggdb
 LDFLAGS += -L $(TFLIBS) -ltensorflow-lite -ldl
 
 # OpenCV
@@ -19,7 +19,7 @@ else
     $(error Couldn\'t find OpenCV)
 endif
 
-deepseg: $(TFLIBS)/libtensorflow-lite.a deepseg.cc loopback.cc
+deepseg: $(TFLIBS)/libtensorflow-lite.a deepseg.cc loopback.cc transpose_conv_bias.cc
 	g++ $^ ${CFLAGS} ${LDFLAGS} -o $@
 
 $(TFLIBS)/libtensorflow-lite.a: $(TFLITE)
