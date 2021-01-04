@@ -120,15 +120,15 @@ int main(int argc, char* argv[]) {
 	int threads= 2;
 	int width  = 640;
 	int height = 480;
-	const char *back = "background.png";
+	const char *back = "images/background.png";
 	const char *vcam = "/dev/video0";
 	const char *ccam = "/dev/video1";
 
-	const char* modelname = "deeplabv3_257_mv_gpu.tflite";
+	const char* modelname = "models/segm_full_v679.tflite";
 
 	for (int arg=1; arg<argc; arg++) {
 		if (strncmp(argv[arg], "-?", 2)==0) {
-			fprintf(stderr, "usage: deepseg [-?] [-d] [-c <capture:/dev/video1>] [-v <vcam:/dev/video0>] [-w <width:640>] [-h <height:480>] [-t <threads:2>] [-b <background.png>]\n");
+			fprintf(stderr, "usage: deepseg [-?] [-d] [-c <capture:/dev/video1>] [-v <vcam:/dev/video0>] [-w <width:640>] [-h <height:480>] [-t <threads:2>] [-b <images/background.png>] [-m <models/segm_full_v679.tflite>]\n");
 			exit(0);
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
@@ -155,6 +155,7 @@ int main(int argc, char* argv[]) {
 	printf("height: %d\n", height);
 	printf("back:   %s\n", back);
 	printf("threads:%d\n", threads);
+	printf("model:  %s\n", modelname);
 
 	cv::Mat bg = cv::imread(back);
 	cv::resize(bg,bg,cv::Size(width,height));
@@ -209,17 +210,18 @@ int main(int argc, char* argv[]) {
 	pthread_t grabber;
 	cv::Mat buf1;
 	cv::Mat buf2;
+	int64 oldcnt = 0;
 	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, PTHREAD_MUTEX_INITIALIZER };
 	if (pthread_create(&grabber, NULL, grab_thread, &capinfo)) {
 		perror("creating grabber thread");
 		exit(1);
 	}
-	// wait for first frame
-	while (0==capinfo.cnt)
-		usleep(1000);
 
 	while (true) {
 
+		// wait for next frame
+		while (capinfo.cnt == oldcnt) usleep(10000);
+		oldcnt = capinfo.cnt;
 		int e1 = cv::getTickCount();
 
 		// switch buffer pointers in capture thread
@@ -274,8 +276,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Google Meet segmentation network
-		if (strstr(modelname,"segm_")) {
-			// FIXME: not working yet
+		if (strstr(modelname,"segm_"))
 			/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
 			 * tensor for the light model with masks for background
 			 * (channel 0) and person (channel 1) where values are in
@@ -288,7 +289,6 @@ int main(int argc, char* argv[]) {
 			float p0 = exp0 / (exp0+exp1);
 			float p1 = exp1 / (exp0+exp1);
 			if (p0 < p1) out[n] = 0; else out[n] = 255;
-		}
 		}
 
 		// denoise
