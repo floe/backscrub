@@ -59,7 +59,7 @@ The dataflow through the whole program is roughly as follows:
     - grab raw YUYV image from camera
     - extract portrait ROI in center
       - downscale ROI to 144 x 256 (*)
-      - convert to RGB (*)
+      - convert to RGB float32 (*)
       - run Google Meet segmentation model 
       - convert result to binary mask using softmax
       - denoise mask using erode/dilate
@@ -114,7 +114,7 @@ Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopba
 Run `make` to build everything (should also clone and build Tensorflow Lite).
 
 If the first part doesn't work:
-  - Clone https://github.com/tensorflow/tensorflow/ repo into tensorflow/ folder
+  - Clone https://github.com/tensorflow/tensorflow/ repo into `tensorflow/` folder
   - Checkout tag v2.4.0
   - run ./tensorflow/lite/tools/make/download_dependencies.sh
   - run ./tensorflow/lite/tools/make/build_lib.sh
