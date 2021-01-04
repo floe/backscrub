@@ -112,7 +112,7 @@ void *grab_thread(void *arg) {
 
 int main(int argc, char* argv[]) {
 
-	printf("deepseg v0.1.0\n");
+	printf("deepseg v0.2.0\n");
 	printf("(c) 2020 by floe@butterbrot.org\n");
 	printf("https://github.com/floe/deepseg\n");
 
