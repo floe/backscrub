@@ -52,7 +52,7 @@ The dataflow through the whole program is roughly as follows:
 
   - init
     - load background.png, convert to YUYV
-		- initialize TFLite, register custom op
+    - initialize TFLite, register custom op
     - load Google Meet segmentation model
     - setup V4L2 Loopback device (w,h,YUYV)
   - loop
@@ -74,15 +74,15 @@ The dataflow through the whole program is roughly as follows:
 Tested with the following dependencies:
 
   - Ubuntu 20.04, x86-64
-	  - Linux kernel 5.6 (stock package)
-  	- OpenCV 4.2.0 (stock package)
-	  - V4L2-Loopback 0.12.5 (stock package)
-	  - Tensorflow Lite 2.4.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.4.0/tensorflow/lite))
+    - Linux kernel 5.6 (stock package)
+    - OpenCV 4.2.0 (stock package)
+    - V4L2-Loopback 0.12.5 (stock package)
+    - Tensorflow Lite 2.4.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.4.0/tensorflow/lite))
   - Ubuntu 18.04.5, x86-64
-	  - Linux kernel 4.15 (stock package)
-  	- OpenCV 3.2.0 (stock package)
-	  - V4L2-Loopback 0.10.0 (stock package)
-	  - Tensorflow Lite 2.1.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.1.0/tensorflow/lite))
+    - Linux kernel 4.15 (stock package)
+    - OpenCV 3.2.0 (stock package)
+    - V4L2-Loopback 0.10.0 (stock package)
+    - Tensorflow Lite 2.1.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.1.0/tensorflow/lite))
   
 Tested with the following software:
 
@@ -95,17 +95,17 @@ Tested with the following software:
     - 8.60.0.76 (works)
     - 8.58.0.93 (works)
   - guvcview
-		- 2.0.6 (works with parameter `-c read`)
-		- 2.0.5 (works with parameter `-c read`)
+    - 2.0.6 (works with parameter `-c read`)
+    - 2.0.5 (works with parameter `-c read`)
   - Microsoft Teams
-	  - 1.3.00.30857 (works)
-	  - 1.3.00.5153 (works)
+    - 1.3.00.30857 (works)
+    - 1.3.00.5153 (works)
   - Chrome
-		- 87.0.4280.88 (works)
-		- 81.0.4044.138 (works)
+    - 87.0.4280.88 (works)
+    - 81.0.4044.138 (works)
   - Zoom - yes, I'm a hypocrite, I tested it with Zoom after all :-)
-	  - 5.4.54779.1115 (works)
-	  - 5.0.403652.0509 (works)
+    - 5.4.54779.1115 (works)
+    - 5.0.403652.0509 (works)
 
 ## Building
 
@@ -114,7 +114,7 @@ Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopba
 Run `make` to build everything (should also clone and build Tensorflow Lite).
 
 If the first part doesn't work:
-	- Clone https://github.com/tensorflow/tensorflow/ repo into tensorflow/ folder
+  - Clone https://github.com/tensorflow/tensorflow/ repo into tensorflow/ folder
   - Checkout tag v2.4.0
   - run ./tensorflow/lite/tools/make/download_dependencies.sh
   - run ./tensorflow/lite/tools/make/build_lib.sh
