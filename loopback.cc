@@ -12,14 +12,14 @@
 #include "loopback.h"
 
 void print_format(struct v4l2_format*vid_format) {
-	printf("	vid_format->type                = %d\n",	vid_format->type );
-	printf("	vid_format->fmt.pix.width       = %d\n",	vid_format->fmt.pix.width );
-	printf("	vid_format->fmt.pix.height      = %d\n",	vid_format->fmt.pix.height );
-	printf("	vid_format->fmt.pix.pixelformat = %d\n",	vid_format->fmt.pix.pixelformat);
-	printf("	vid_format->fmt.pix.sizeimage   = %d\n",	vid_format->fmt.pix.sizeimage );
-	printf("	vid_format->fmt.pix.field       = %d\n",	vid_format->fmt.pix.field );
-	printf("	vid_format->fmt.pix.bytesperline= %d\n",	vid_format->fmt.pix.bytesperline );
-	printf("	vid_format->fmt.pix.colorspace  = %d\n",	vid_format->fmt.pix.colorspace );
+	printf("vid_format->type                = %d\n",	vid_format->type );
+	printf("vid_format->fmt.pix.width       = %d\n",	vid_format->fmt.pix.width );
+	printf("vid_format->fmt.pix.height      = %d\n",	vid_format->fmt.pix.height );
+	printf("vid_format->fmt.pix.pixelformat = %d\n",	vid_format->fmt.pix.pixelformat);
+	printf("vid_format->fmt.pix.sizeimage   = %d\n",	vid_format->fmt.pix.sizeimage );
+	printf("vid_format->fmt.pix.field       = %d\n",	vid_format->fmt.pix.field );
+	printf("vid_format->fmt.pix.bytesperline= %d\n",	vid_format->fmt.pix.bytesperline );
+	printf("vid_format->fmt.pix.colorspace  = %d\n",	vid_format->fmt.pix.colorspace );
 }
 
 int loopback_init(const char* device, int w, int h, int debug) {

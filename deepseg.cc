@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
 
 	printf("deepseg v0.2.0\n");
 	printf("(c) 2020 by floe@butterbrot.org\n");
-	printf("https://github.com/floe/deepseg\n");
+	printf("https://github.com/floe/deepbacksub\n");
 
 	int debug  = 0;
 	int threads= 2;
@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
 
 	for (int arg=1; arg<argc; arg++) {
 		if (strncmp(argv[arg], "-?", 2)==0) {
-			fprintf(stderr, "usage: deepseg [-?] [-d] [-c <capture:/dev/video1>] [-v <vcam:/dev/video0>] [-w <width:640>] [-h <height:480>] [-t <threads:2>] [-b <images/background.png>] [-m <models/segm_full_v679.tflite>]\n");
+			fprintf(stderr, "usage: deepseg [-?] [-d] [-c <capture:%s>] [-v <vcam:%s>] [-w <width:%d>] [-h <height:%d>] [-t <threads:%d>] [-b <%s>] [-m <%s>]\n",ccam,vcam,width,height,threads,back,modelname);
 			exit(0);
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
 	printf("height: %d\n", height);
 	printf("back:   %s\n", back);
 	printf("threads:%d\n", threads);
-	printf("model:  %s\n", modelname);
+	printf("model:  %s\n\n", modelname);
 
 	cv::Mat bg = cv::imread(back);
 	cv::resize(bg,bg,cv::Size(width,height));
