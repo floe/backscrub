@@ -20,6 +20,7 @@ void print_format(struct v4l2_format*vid_format) {
 	printf("vid_format->fmt.pix.field       = %d\n",	vid_format->fmt.pix.field );
 	printf("vid_format->fmt.pix.bytesperline= %d\n",	vid_format->fmt.pix.bytesperline );
 	printf("vid_format->fmt.pix.colorspace  = %d\n",	vid_format->fmt.pix.colorspace );
+	printf("\n");
 }
 
 int loopback_init(const char* device, int w, int h, int debug) {

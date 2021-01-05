@@ -113,7 +113,7 @@ void *grab_thread(void *arg) {
 int main(int argc, char* argv[]) {
 
 	printf("deepseg v0.2.0\n");
-	printf("(c) 2020 by floe@butterbrot.org\n");
+	printf("(c) 2021 by floe@butterbrot.org\n");
 	printf("https://github.com/floe/deepbacksub\n");
 
 	int debug  = 0;
@@ -203,6 +203,7 @@ int main(int argc, char* argv[]) {
 	// erosion/dilation element
 	cv::Mat element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
 
+	// label number of "person" for DeepLab v3+ model
 	const int cnum = labels.size();
 	const int pers = std::find(labels.begin(),labels.end(),"person") - labels.begin();
 
@@ -217,6 +218,7 @@ int main(int argc, char* argv[]) {
 		exit(1);
 	}
 
+	// mainloop
 	while (true) {
 
 		// wait for next frame
