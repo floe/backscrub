@@ -109,7 +109,7 @@ Tested with the following software:
 
 ## Building
 
-Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms`).
+Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms curl`).
 
 Run `make` to build everything (should also clone and build Tensorflow Lite).
 
