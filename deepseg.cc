@@ -158,6 +158,10 @@ int main(int argc, char* argv[]) {
 	printf("model:  %s\n\n", modelname);
 
 	cv::Mat bg = cv::imread(back);
+	if (bg.empty()) {
+		printf("Warning: could not load background image, defaulting to green\n");
+		bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
+	}
 	cv::resize(bg,bg,cv::Size(width,height));
 	bg = convert_rgb_to_yuyv( bg );
 	int lbfd = loopback_init(vcam,width,height,debug);
