@@ -109,7 +109,7 @@ Tested with the following software:
 
 ## Building
 
-Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms`).
+Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms curl`).
 
 Run `make` to build everything (should also clone and build Tensorflow Lite).
 
@@ -125,9 +125,9 @@ First, load the v4l2loopback module (extra settings needed to make Chrome work):
 ```
 sudo modprobe v4l2loopback devices=1 max_buffers=2 exclusive_caps=1 card_label="VirtualCam"
 ```
-Then, run deepseg (-d for debug, -c for capture device, -v for virtual device):
+Then, run deepseg (-d -d for full debug, -c for capture device, -v for virtual device):
 ```
-./deepseg -d -c /dev/video0 -v /dev/video1
+./deepseg -d -d -c /dev/video0 -v /dev/video1
 ```
 
 ## Limitations/Extensions
