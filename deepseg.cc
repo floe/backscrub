@@ -126,10 +126,9 @@ int main(int argc, char* argv[]) {
 
 	const char* modelname = "models/segm_full_v679.tflite";
 
+	bool showUsage = false;
 	for (int arg=1; arg<argc; arg++) {
 		if (strncmp(argv[arg], "-?", 2)==0) {
-			fprintf(stderr, "usage: deepseg [-?] [-d] [-c <capture:%s>] [-v <vcam:%s>] [-w <width:%d>] [-h <height:%d>] [-t <threads:%d>] [-b <%s>] [-m <%s>]\n",ccam,vcam,width,height,threads,back,modelname);
-			exit(0);
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
 		} else if (strncmp(argv[arg], "-v", 2)==0) {
@@ -148,6 +147,25 @@ int main(int argc, char* argv[]) {
 			sscanf(argv[++arg], "%d", &threads);
 		}
 	}
+
+	if (showUsage) {
+		fprintf(stderr, "\n");
+		fprintf(stderr, "usage:\n");
+		fprintf(stderr, "  deepseg [-?] [-d] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
+		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>]\n");
+		fprintf(stderr, "\n");
+		fprintf(stderr, "-?            Display this usage information\n");
+		fprintf(stderr, "-d            Increase debug level\n");
+		fprintf(stderr, "-c            Specify the video source (capture) device\n");
+		fprintf(stderr, "-v            Specify the video target (sink) device\n");
+		fprintf(stderr, "-w            Specify the video stream width\n");
+		fprintf(stderr, "-h            Specify the video stream height\n");
+		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
+		fprintf(stderr, "-b            Specify the background image\n");
+		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
+		exit(1);
+	}
+
 	printf("debug:  %d\n", debug);
 	printf("ccam:   %s\n", ccam);
 	printf("vcam:   %s\n", vcam);
@@ -164,6 +182,7 @@ int main(int argc, char* argv[]) {
 	}
 	cv::resize(bg,bg,cv::Size(width,height));
 	bg = convert_rgb_to_yuyv( bg );
+
 	int lbfd = loopback_init(vcam,width,height,debug);
 
 	cv::VideoCapture cap(ccam, CV_CAP_V4L2);
