@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
 	int threads= 2;
 	int width  = 640;
 	int height = 480;
-	const char *back = "images/background.png";
+	const char *back = nullptr; // "images/background.png";
 	const char *vcam = "/dev/video0";
 	const char *ccam = "/dev/video1";
 
@@ -207,13 +207,18 @@ int main(int argc, char* argv[]) {
 	printf("vcam:   %s\n", vcam);
 	printf("width:  %d\n", width);
 	printf("height: %d\n", height);
-	printf("back:   %s\n", back);
 	printf("threads:%d\n", threads);
+	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
 
-	cv::Mat bg = cv::imread(back);
+	cv::Mat bg;
+	if (back) {
+		bg = cv::imread(back);
+	}
 	if (bg.empty()) {
-		printf("Warning: could not load background image, defaulting to green\n");
+		if (back) {
+			printf("Warning: could not load background image, defaulting to green\n");
+		}
 		bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 	}
 	cv::resize(bg,bg,cv::Size(width,height));
