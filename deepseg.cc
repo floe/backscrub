@@ -128,23 +128,59 @@ int main(int argc, char* argv[]) {
 
 	bool showUsage = false;
 	for (int arg=1; arg<argc; arg++) {
+		bool hasArgument = arg+1 < argc;
 		if (strncmp(argv[arg], "-?", 2)==0) {
+			showUsage = true;
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
 		} else if (strncmp(argv[arg], "-v", 2)==0) {
-			vcam = argv[++arg];
+			if (hasArgument) {
+				vcam = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-c", 2)==0) {
-			ccam = argv[++arg];
+			if (hasArgument) {
+				ccam = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-b", 2)==0) {
-			back = argv[++arg];
+			if (hasArgument) {
+				back = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-m", 2)==0) {
-			modelname = argv[++arg];
+			if (hasArgument) {
+				modelname = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-w", 2)==0) {
-			sscanf(argv[++arg], "%d", &width);
+			if (hasArgument && sscanf(argv[++arg], "%d", &width)) {
+				if (!width) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-h", 2)==0) {
-			sscanf(argv[++arg], "%d", &height);
+			if (hasArgument && sscanf(argv[++arg], "%d", &height)) {
+				if (!height) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-t", 2)==0) {
-			sscanf(argv[++arg], "%d", &threads);
+			if (hasArgument && sscanf(argv[++arg], "%d", &threads)) {
+				if (!threads) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
 		}
 	}
 
