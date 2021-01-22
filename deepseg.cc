@@ -123,6 +123,8 @@ int main(int argc, char* argv[]) {
 	const char *back = nullptr; // "images/background.png";
 	const char *vcam = "/dev/video0";
 	const char *ccam = "/dev/video1";
+	bool flipHorizontal = false;
+	bool flipVertical   = false;
 
 	const char* modelname = "models/segm_full_v679.tflite";
 
@@ -133,6 +135,10 @@ int main(int argc, char* argv[]) {
 			showUsage = true;
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
+		} else if (strncmp(argv[arg], "-H", 2)==0) {
+			flipHorizontal = !flipHorizontal;
+		} else if (strncmp(argv[arg], "-V", 2)==0) {
+			flipVertical = !flipVertical;
 		} else if (strncmp(argv[arg], "-v", 2)==0) {
 			if (hasArgument) {
 				vcam = argv[++arg];
@@ -199,6 +205,8 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
 		fprintf(stderr, "-b            Specify the background image\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
+		fprintf(stderr, "-H            Mirror the output horizontally\n");
+		fprintf(stderr, "-V            Mirror the output vertically\n");
 		exit(1);
 	}
 
@@ -207,6 +215,8 @@ int main(int argc, char* argv[]) {
 	printf("vcam:   %s\n", vcam);
 	printf("width:  %d\n", width);
 	printf("height: %d\n", height);
+	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
+	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
 	printf("threads:%d\n", threads);
 	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
@@ -367,6 +377,17 @@ int main(int argc, char* argv[]) {
 
 		// copy background over raw cam image using mask
 		bg.copyTo(raw,mask);
+
+		if (flipHorizontal) {
+			//Horizontal mirror destroys color in YUYV, need to detour via RGB
+			cv::Mat rgb;
+			cv::cvtColor(raw,rgb,CV_YUV2BGR_YUYV);
+			cv::flip(rgb,rgb,1);
+			raw = convert_rgb_to_yuyv(rgb);
+		}
+		if (flipVertical) {
+			cv::flip(raw,raw,0);
+		}
 
 		// write frame to v4l2loopback
 		int framesize = raw.step[0]*raw.rows;
