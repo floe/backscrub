@@ -120,50 +120,120 @@ int main(int argc, char* argv[]) {
 	int threads= 2;
 	int width  = 640;
 	int height = 480;
-	const char *back = "images/background.png";
+	const char *back = nullptr; // "images/background.png";
 	const char *vcam = "/dev/video0";
 	const char *ccam = "/dev/video1";
+	bool flipHorizontal = false;
+	bool flipVertical   = false;
 
 	const char* modelname = "models/segm_full_v679.tflite";
 
+	bool showUsage = false;
 	for (int arg=1; arg<argc; arg++) {
+		bool hasArgument = arg+1 < argc;
 		if (strncmp(argv[arg], "-?", 2)==0) {
-			fprintf(stderr, "usage: deepseg [-?] [-d] [-c <capture:%s>] [-v <vcam:%s>] [-w <width:%d>] [-h <height:%d>] [-t <threads:%d>] [-b <%s>] [-m <%s>]\n",ccam,vcam,width,height,threads,back,modelname);
-			exit(0);
+			showUsage = true;
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
+		} else if (strncmp(argv[arg], "-H", 2)==0) {
+			flipHorizontal = !flipHorizontal;
+		} else if (strncmp(argv[arg], "-V", 2)==0) {
+			flipVertical = !flipVertical;
 		} else if (strncmp(argv[arg], "-v", 2)==0) {
-			vcam = argv[++arg];
+			if (hasArgument) {
+				vcam = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-c", 2)==0) {
-			ccam = argv[++arg];
+			if (hasArgument) {
+				ccam = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-b", 2)==0) {
-			back = argv[++arg];
+			if (hasArgument) {
+				back = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-m", 2)==0) {
-			modelname = argv[++arg];
+			if (hasArgument) {
+				modelname = argv[++arg];
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-w", 2)==0) {
-			sscanf(argv[++arg], "%d", &width);
+			if (hasArgument && sscanf(argv[++arg], "%d", &width)) {
+				if (!width) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-h", 2)==0) {
-			sscanf(argv[++arg], "%d", &height);
+			if (hasArgument && sscanf(argv[++arg], "%d", &height)) {
+				if (!height) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-t", 2)==0) {
-			sscanf(argv[++arg], "%d", &threads);
+			if (hasArgument && sscanf(argv[++arg], "%d", &threads)) {
+				if (!threads) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
 		}
 	}
+
+	if (showUsage) {
+		fprintf(stderr, "\n");
+		fprintf(stderr, "usage:\n");
+		fprintf(stderr, "  deepseg [-?] [-d] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
+		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>]\n");
+		fprintf(stderr, "\n");
+		fprintf(stderr, "-?            Display this usage information\n");
+		fprintf(stderr, "-d            Increase debug level\n");
+		fprintf(stderr, "-c            Specify the video source (capture) device\n");
+		fprintf(stderr, "-v            Specify the video target (sink) device\n");
+		fprintf(stderr, "-w            Specify the video stream width\n");
+		fprintf(stderr, "-h            Specify the video stream height\n");
+		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
+		fprintf(stderr, "-b            Specify the background image\n");
+		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
+		fprintf(stderr, "-H            Mirror the output horizontally\n");
+		fprintf(stderr, "-V            Mirror the output vertically\n");
+		exit(1);
+	}
+
 	printf("debug:  %d\n", debug);
 	printf("ccam:   %s\n", ccam);
 	printf("vcam:   %s\n", vcam);
 	printf("width:  %d\n", width);
 	printf("height: %d\n", height);
-	printf("back:   %s\n", back);
+	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
+	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
 	printf("threads:%d\n", threads);
+	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
 
-	cv::Mat bg = cv::imread(back);
+	cv::Mat bg;
+	if (back) {
+		bg = cv::imread(back);
+	}
 	if (bg.empty()) {
-		printf("Warning: could not load background image, defaulting to green\n");
+		if (back) {
+			printf("Warning: could not load background image, defaulting to green\n");
+		}
 		bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 	}
 	cv::resize(bg,bg,cv::Size(width,height));
 	bg = convert_rgb_to_yuyv( bg );
+
 	int lbfd = loopback_init(vcam,width,height,debug);
 
 	cv::VideoCapture cap(ccam, CV_CAP_V4L2);
@@ -311,6 +381,17 @@ int main(int argc, char* argv[]) {
 
 		// copy background over raw cam image using mask
 		bg.copyTo(raw,mask);
+
+		if (flipHorizontal) {
+			//Horizontal mirror destroys color in YUYV, need to detour via RGB
+			cv::Mat rgb;
+			cv::cvtColor(raw,rgb,CV_YUV2BGR_YUYV);
+			cv::flip(rgb,rgb,1);
+			raw = convert_rgb_to_yuyv(rgb);
+		}
+		if (flipVertical) {
+			cv::flip(raw,raw,0);
+		}
 
 		// write frame to v4l2loopback
 		int framesize = raw.step[0]*raw.rows;
