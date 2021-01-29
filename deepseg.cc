@@ -207,6 +207,9 @@ int main(int argc, char* argv[]) {
 	// erosion/dilation element
 	cv::Mat element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
 
+	// create Mat for small mask
+	cv::Mat ofinal(output.rows,output.cols,CV_8UC1);
+
 	// label number of "person" for DeepLab v3+ model
 	const int cnum = labels.size();
 	const int pers = std::find(labels.begin(),labels.end(),"person") - labels.begin();
@@ -255,8 +258,6 @@ int main(int argc, char* argv[]) {
 		// Run inference
 		TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
 
-		// create Mat for small mask
-		cv::Mat ofinal(output.rows,output.cols,CV_8UC1);
 		float* tmp = (float*)output.data;
 		uint8_t* out = (uint8_t*)ofinal.data;
 
@@ -271,14 +272,16 @@ int main(int argc, char* argv[]) {
 				}
 			}
 			// set mask to 0 where class == person
-			out[n] = (maxpos==pers ? 0 : 255);
+			uint8_t val = (maxpos==pers ? 0 : 255);
+			out[n] = (val & 0xE0) | (out[n] >> 3);
 		}
 
 		// threshold probability
 		if (strstr(modelname,"body-pix"))
 		for (unsigned int n = 0; n < output.total(); n++) {
 			// FIXME: hardcoded threshold
-			if (tmp[n] > 0.65) out[n] = 0; else out[n] = 255;
+			uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+			out[n] = (val & 0xE0) | (out[n] >> 3);
 		}
 
 		// Google Meet segmentation network
@@ -294,7 +297,8 @@ int main(int argc, char* argv[]) {
 			float exp1 = expf(tmp[2*n+1]);
 			float p0 = exp0 / (exp0+exp1);
 			float p1 = exp1 / (exp0+exp1);
-			if (p0 < p1) out[n] = 0; else out[n] = 255;
+			uint8_t val = (p0 < p1 ? 0 : 255);
+			out[n] = (val & 0xE0) | (out[n] >> 3);
 		}
 
 		// denoise
