@@ -32,3 +32,6 @@ all: deepseg
 
 clean:
 	-rm deepseg
+
+tv: transparent_viewer.c
+	g++ -o $@ $^ -lX11 -lGL $(CFLAGS) $(LDFLAGS)
