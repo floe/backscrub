@@ -322,6 +322,13 @@ int main(int argc, char* argv[]) {
 		cv::cvtColor(in_u8_yuv,in_u8_rgb,CV_YUV2RGB_YUYV);
 		// TODO: can convert directly to float?
 
+		// bilateral filter to reduce noise
+		if (1) {
+			cv::Mat filtered;
+			cv::bilateralFilter(in_u8_rgb,filtered,5,100.0,100.0);
+			in_u8_rgb = filtered;
+		}
+
 		// convert to float and normalize values to [-1;1]
 		in_u8_rgb.convertTo(input,CV_32FC3,1.0/128.0,-1.0);
 
