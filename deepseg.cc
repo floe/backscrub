@@ -235,6 +235,10 @@ int main(int argc, char* argv[]) {
 	bg = convert_rgb_to_yuyv( bg );
 
 	int lbfd = loopback_init(vcam,width,height,debug);
+	if(lbfd < 0) {
+		fprintf(stderr, "Failed to initialize vcam device.\n");
+		exit(1);
+	}
 
 	cv::VideoCapture cap(ccam, CV_CAP_V4L2);
 	TFLITE_MINIMAL_CHECK(cap.isOpened());

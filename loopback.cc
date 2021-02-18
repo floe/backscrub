@@ -35,7 +35,10 @@ int loopback_init(const char* device, int w, int h, int debug) {
 	int ret_code = 0;
 
 	fdwr = open(device, O_RDWR);
-	assert(fdwr >= 0);
+	if(fdwr < 0) {
+		fprintf(stderr, "%s:%d(%s): Failed to open video device: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
+		return -1;
+	}
 
 	ret_code = ioctl(fdwr, VIDIOC_QUERYCAP, &vid_caps);
 	assert(ret_code != -1);
@@ -80,6 +83,10 @@ int main(int argc, char* argv[]) {
 	}
 
 	int fdwr = loopback_init(video_device,FRAME_WIDTH,FRAME_HEIGHT);
+	if(fdwr < 0) {
+		fprintf(stderr, "Failed to initialize output device %s\n", video_device);
+		exit(1);
+	}
 
 	uint8_t* buffer = (uint8_t*)malloc(framesize);
 
