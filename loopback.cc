@@ -8,6 +8,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <errno.h>
 
 #include "loopback.h"
 
@@ -41,7 +42,11 @@ int loopback_init(const char* device, int w, int h, int debug) {
 	}
 
 	ret_code = ioctl(fdwr, VIDIOC_QUERYCAP, &vid_caps);
-	assert(ret_code != -1);
+	if(ret_code < 0) {
+		fprintf(stderr, "%s:%d(%s): Failed to query device capabilities: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
+		close(fdwr);
+		return -1;
+	}
 
 	memset(&vid_format, 0, sizeof(vid_format));
 	//usleep(100000);
@@ -58,7 +63,11 @@ int loopback_init(const char* device, int w, int h, int debug) {
 	vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
 
 	ret_code = ioctl(fdwr, VIDIOC_S_FMT, &vid_format);
-	assert(ret_code != -1);
+	if(ret_code < 0) {
+		fprintf(stderr, "%s:%d(%s): Failed to set device video format: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
+		close(fdwr);
+		return -1;
+	}
 
 	if (debug) print_format(&vid_format);
 
