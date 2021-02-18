@@ -83,12 +83,12 @@ int main(int argc, char* argv[]) {
 
 	uint8_t* buffer = (uint8_t*)malloc(framesize);
 
-while (true) {
-	write(fdwr, buffer, framesize);
-	usleep(100000);
-	uint64_t* front = (uint64_t*)(buffer);
-	*front += 12345;
-}
+	while (true) {
+		write(fdwr, buffer, framesize);
+		usleep(100000);
+		uint64_t* front = (uint64_t*)(buffer);
+		*front += 12345;
+	}
 
 	pause();
 

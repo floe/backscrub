@@ -38,7 +38,6 @@ int width = 640;
 int height = 480;
 
 int x_wait_for_events( int msec ) {
-
 	fd_set fdset;
 	struct timeval wait;
 
@@ -54,7 +53,6 @@ int x_wait_for_events( int msec ) {
 }
 
 void gl_init_texture() {
- 
 	GLuint t = 0;
 
 	glEnable(GL_TEXTURE_2D);
@@ -68,7 +66,6 @@ void gl_init_texture() {
 }
 
 void gl_update_texture() {
-
 	cv::Mat pic,alpha;
 	cap.read(pic);
 	cv::cvtColor(pic,alpha,CV_YUV2RGBA_YUYV);
@@ -80,15 +77,14 @@ void gl_update_texture() {
 			data[i] = 0;
 	}
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, alpha.cols, alpha.rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, alpha.data ); 
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, alpha.cols, alpha.rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, alpha.data );
 }
 
 void gl_idle() {
-
 	glClearColor( 1.0, 1.0, 1.0, 1.0 );
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glMatrixMode(GL_PROJECTION); glLoadIdentity(); 
+	glMatrixMode(GL_PROJECTION); glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);  glLoadIdentity();
 
 	glBegin(GL_QUADS);
@@ -107,22 +103,21 @@ void gl_idle() {
 }
 
 void x_create_glx_window(const char* title, int w, int h) {
-
 	display = XOpenDisplay( NULL );
 	const char* xserver = getenv( "DISPLAY" );
 
 	if (display == NULL) {
-		printf("Could not establish a connection to X-server '%s'\n", xserver ) ;
-		exit(1) ;
+		printf("Could not establish a connection to X-server '%s'\n", xserver );
+		exit(1);
 	}
 
 	// query Visual for "TrueColor" and 32 bits depth (RGBA)
-	XVisualInfo visualinfo ;
+	XVisualInfo visualinfo;
 	XMatchVisualInfo(display, DefaultScreen(display), 32, TrueColor, &visualinfo);
-	
+
 	// create window
 	XSetWindowAttributes attr;
-	attr.colormap	= XCreateColormap( display, DefaultRootWindow(display), visualinfo.visual, AllocNone );
+	attr.colormap   = XCreateColormap( display, DefaultRootWindow(display), visualinfo.visual, AllocNone );
 	attr.event_mask = ExposureMask | KeyPressMask | StructureNotifyMask;
 	attr.background_pixmap = None;
 	attr.border_pixel = 0;
@@ -135,26 +130,28 @@ void x_create_glx_window(const char* title, int w, int h) {
 	XStoreName( display, win, title );
 
 	// say window manager which position we would prefer
-	XSizeHints sizehints ;
-	sizehints.flags = PPosition | PSize ;
-	sizehints.x	  = 50 ;  sizehints.y = 300 ;
-	sizehints.width = w; sizehints.height = h;
-	XSetWMNormalHints( display, win, &sizehints ) ;
+	XSizeHints sizehints;
+	sizehints.flags  = PPosition | PSize;
+	sizehints.x      = 50;
+	sizehints.y      = 300;
+	sizehints.width  = w;
+	sizehints.height = h;
+	XSetWMNormalHints( display, win, &sizehints );
 
 	// Switch On >> If user pressed close key let window manager only send notification >>
-	Atom wm_delete_window = XInternAtom( display, "WM_DELETE_WINDOW", 0) ;
-	XSetWMProtocols( display, win, &wm_delete_window, 1) ;
+	Atom wm_delete_window = XInternAtom( display, "WM_DELETE_WINDOW", 0);
+	XSetWMProtocols( display, win, &wm_delete_window, 1);
 
 	// create OpenGL context
-	GLXContext glcontext = glXCreateContext( display, &visualinfo, 0, True ) ;
+	GLXContext glcontext = glXCreateContext( display, &visualinfo, 0, True );
 	if (!glcontext) {
-		printf("X11 server '%s' does not support OpenGL\n", xserver ) ;
-		exit(1) ;
+		printf("X11 server '%s' does not support OpenGL\n", xserver );
+		exit(1);
 	}
-	glXMakeCurrent( display, win, glcontext ) ;
+	glXMakeCurrent( display, win, glcontext );
 
 	// now let the window appear to the user
-	XMapWindow( display, win) ;
+	XMapWindow( display, win);
 
 	// set undecorated property
 	Atom motif_hints = XInternAtom(display,"_MOTIF_WM_HINTS",False);
@@ -171,54 +168,54 @@ void x_create_glx_window(const char* title, int w, int h) {
 		16, 16,
 		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,213893055,2696592058,4072257977,4072192184,2663037626,213893055,0,0,0,0,0,0,0,0,0,0,2880944055,4208449495,4294440951,4294177779,4208186323,2847258037,0,0,0,0,0,0,0,0,0,0,4105417651,4294440951,4293980400,4293519849,4293914607,4105351858,0,0,0,0,0,0,0,0,0,0,4004491183,4293980400,4293454056,4293190884,4293585642,4121865902,0,0,0,0,0,0,0,0,0,0,3450645676,4292796126,4293125091,4292927712,4292467161,3551308972,0,0,0,0,0,0,0,0,0,0,1436919205,4189040559,4292730333,4292598747,4189040559,1571268519,0,0,0,0,0,0,0,0,0,0,0,3349785001,4289572269,4289835441,3618088871,0,0,0,0,0,0,0,0,0,0,0,0,1739632816,4173184445,4189764282,1856941742,0,0,0,0,0,0,0,0,0,79675327,1504488620,3350245552,4172658101,4259965417,4276874219,4155880885,3299913904,1336650667,41975936,0,0,0,0,0,598255784,3853101481,4106404546,4293256677,4294243572,4293914607,4293783021,4293914607,4292796126,4105878202,3752438185,749250728,0,0,0,0,2980357284,4275097808,4293454056,4293059298,4292796126,4292730333,4292664540,4292532954,4292796126,4293125091,4274834636,3231949731,0,0,0,0,3600719518,4292072403,4292138196,4292006610,4292006610,4292006610,4292006610,4292006610,4292006610,4292138196,4292138196,3634273950,0,0,0,0,4002912151,4292072403,4292203989,4292072403,4292006610,4292006610,4292006610,4292006610,4292072403,4292203989,4291940817,3919026071,0,0,0,0,4052717455,4121405351,4290493371,4291282887,4291677645,4291940817,4292006610,4291611852,4291217094,4290493371,4104299170,3851522449,0,0,0,0,311332494,1787398537,3062795918,3666841487,3968633996,4186606218,4186606218,3935145357,3599666830,2945289613,1653246602,244486802,0,0
 	};
+
 	Atom wm_icon = XInternAtom(display, "_NET_WM_ICON", False);
 	XChangeProperty(display, win, wm_icon, XA_CARDINAL, 32, PropModeReplace, (unsigned char*)buffer, sizeof(buffer)/sizeof(long));
 }
 
 int main(int argc, char* argv[]) {
-
 	x_create_glx_window("TransViewer",width,height);
 
 	gl_init_texture();
 
-  cap = cv::VideoCapture(0, CV_CAP_V4L2);
+	cap = cv::VideoCapture(0, CV_CAP_V4L2);
 	if (!cap.isOpened()) { printf("unable to open camera\n"); exit(1); }
 
-  cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
-  cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-  cap.set(CV_CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
-  cap.set(CV_CAP_PROP_CONVERT_RGB, false);
+	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
+	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+	cap.set(CV_CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
+	cap.set(CV_CAP_PROP_CONVERT_RGB, false);
 
-	int isUserWantsWindowToClose = 0 ;
-	int isRedraw = 1 ;
+	int isUserWantsWindowToClose = 0;
+	int isRedraw = 1;
 
 	while (!isUserWantsWindowToClose) {
 
 		while (XPending(display) > 0) {
 
 			// process event
-			XEvent	event ;
-			XNextEvent( display, &event) ;
+			XEvent event;
+			XNextEvent( display, &event);
 
 			switch (event.type) {  // see 'man XAnyEvent' for a list of available events
 
 				case ClientMessage:
 					// check if the client message was send by window manager to indicate user wants to close the window
-					if ( event.xclient.message_type  == XInternAtom( display, "WM_PROTOCOLS", 1) &&
-					     event.xclient.data.l[0]  == (long int)XInternAtom( display, "WM_DELETE_WINDOW", 1)) 
-						isUserWantsWindowToClose = 1 ;
+					if( event.xclient.message_type  == XInternAtom( display, "WM_PROTOCOLS", 1) &&
+					    event.xclient.data.l[0]  == (long int)XInternAtom( display, "WM_DELETE_WINDOW", 1))
+						isUserWantsWindowToClose = 1;
 					break;
 
 				case KeyPress: {
 					KeySym key = XLookupKeysym(&event.xkey, 0);
 					if ((key == XK_Escape) || (key == XK_q))
-						isUserWantsWindowToClose = 1 ;
-					break ;
+						isUserWantsWindowToClose = 1;
+					break;
 				}
 				case Expose:
 					if (event.xexpose.count == 0)
-						isRedraw = 1 ;
-					break ;
+						isRedraw = 1;
+					break;
 
 				case ConfigureNotify:
 					glViewport(0,0,event.xconfigure.width,event.xconfigure.height);
@@ -241,8 +238,8 @@ int main(int argc, char* argv[]) {
 			break;
 	}
 
-	XDestroyWindow( display, win ) ; 
-	XCloseDisplay( display ) ; 
+	XDestroyWindow( display, win );
+	XCloseDisplay( display );
 
-	return 0 ;
+	return 0;
 }
