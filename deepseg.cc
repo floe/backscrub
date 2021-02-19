@@ -245,8 +245,7 @@ int main(int argc, char* argv[]) {
 
 	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-	cap.set(CV_CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
-	cap.set(CV_CAP_PROP_CONVERT_RGB, false);
+	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
 	// Load model
 	std::unique_ptr<tflite::FlatBufferModel> model =
@@ -321,9 +320,9 @@ int main(int argc, char* argv[]) {
 		cv::Mat roi = raw(roidim);
 
 		// resize ROI to input size
-		cv::Mat in_u8_yuv, in_u8_rgb;
-		cv::resize(roi,in_u8_yuv,cv::Size(input.cols,input.rows));
-		cv::cvtColor(in_u8_yuv,in_u8_rgb,CV_YUV2RGB_YUYV);
+		cv::Mat in_u8_bgr, in_u8_rgb;
+		cv::resize(roi,in_u8_bgr,cv::Size(input.cols,input.rows));
+		cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
 		// TODO: can convert directly to float?
 
 		// bilateral filter to reduce noise
