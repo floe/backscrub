@@ -266,7 +266,6 @@ int main(int argc, char* argv[]) {
 		bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 	}
 	cv::resize(bg,bg,cv::Size(width,height));
-	bg = convert_rgb_to_yuyv( bg );
 
 	int lbfd = loopback_init(vcam,width,height,debug);
 	if(lbfd < 0) {
@@ -433,19 +432,17 @@ int main(int argc, char* argv[]) {
 		// copy background over raw cam image using mask
 		bg.copyTo(raw,mask);
 
-		if (flipHorizontal) {
-			//Horizontal mirror destroys color in YUYV, need to detour via RGB
-			cv::Mat rgb;
-			cv::cvtColor(raw,rgb,CV_YUV2BGR_YUYV);
-			cv::flip(rgb,rgb,1);
-			raw = convert_rgb_to_yuyv(rgb);
-		}
-		if (flipVertical) {
+		if (flipHorizontal && flipVertical) {
+			cv::flip(raw,raw,-1);
+		} else if (flipHorizontal) {
+			cv::flip(raw,raw,1);
+		} else if (flipVertical) {
 			cv::flip(raw,raw,0);
 		}
 		ti.postns=timestamp();
 
-		// write frame to v4l2loopback
+		// write frame to v4l2loopback as YUYV
+		raw = convert_rgb_to_yuyv(raw);
 		int framesize = raw.step[0]*raw.rows;
 		while (framesize > 0) {
 			int ret = write(lbfd,raw.data,framesize);
