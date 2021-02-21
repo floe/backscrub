@@ -111,13 +111,18 @@ Tested with the following software:
 
 Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms curl`).
 
+Clone this repository with `git clone --recursive https://github.com/floe/deepbacksub.git`.
+To speed up the checkout you can additionally pass `--depth=1` to `git clone`.
+This is okay, if you only want to download and build the code, however, for development it is not recommended.
+
 Run `make` to build everything (should also clone and build Tensorflow Lite).
+Alternatively, you can also use `cmake`. Create a subfolder (e.g. `build`), change to that folder and run: `cmake && make -j4` (please replace "4" with the number of your cores).
 
 If the first part doesn't work:
   - Clone https://github.com/tensorflow/tensorflow/ repo into `tensorflow/` folder
   - Checkout tag v2.4.0
-  - run ./tensorflow/lite/tools/make/download_dependencies.sh
-  - run ./tensorflow/lite/tools/make/build_lib.sh
+  - run ./tensorflow/lite/tools/make/download_dependencies.sh (only for non-cmake build)
+  - run ./tensorflow/lite/tools/make/build_lib.sh (only for non-cmake build)
 
 ## Usage
 
