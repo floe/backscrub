@@ -300,8 +300,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	// mainloop
-	while (true) {
-
+	for(bool running = true; running; ) {
 		// wait for next frame
 		while (capinfo.cnt == oldcnt) usleep(10000);
 		oldcnt = capinfo.cnt;
@@ -423,8 +422,21 @@ int main(int argc, char* argv[]) {
 		cv::Mat test;
 		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
 		cv::imshow("output.png",test);
-		if (cv::waitKey(1) == 'q') break;
+
+		auto keyPress = cv::waitKey(1);
+		switch(keyPress) {
+			case 'q':
+				running = false;
+				break;
+			case 'h':
+				flipHorizontal = !flipHorizontal;
+				break;
+			case 'v':
+				flipVertical = !flipVertical;
+				break;
+		}
 	}
+
 	pthread_mutex_lock(&capinfo.lock);
 	capinfo.grab = NULL;
 	pthread_mutex_unlock(&capinfo.lock);
