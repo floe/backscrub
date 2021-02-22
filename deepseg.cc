@@ -454,7 +454,7 @@ int main(int argc, char* argv[]) {
 		if (!debug) { printf("."); fflush(stdout); continue; }
 
 		// timing details..
-		printf("wait:%ld lock:%ld [grab:%ld retr:%ld] copy:%ld open:%ld tflt:%ld mask:%ld post:%ld v4l2:%ld ",
+		printf("wait:%9ld lock:%9ld [grab:%9ld retr:%9ld] copy:%9ld open:%9ld tflt:%9ld mask:%9ld post:%9ld v4l2:%9ld ",
 			diffnanosecs(ti.waitns,ti.lastns),
 			diffnanosecs(ti.lockns,ti.waitns),
 			ti.grabns,
@@ -468,7 +468,7 @@ int main(int argc, char* argv[]) {
 
 		int e2 = cv::getTickCount();
 		float t = (e2-e1)/cv::getTickFrequency();
-		printf("FPS: %5.2f\r",1.0/t);
+		printf("FPS: %5.2f\e[K\r",1.0/t);
 		fflush(stdout);
 		ti.lastns = timestamp();
 		if (debug < 2) continue;
@@ -495,6 +495,7 @@ int main(int argc, char* argv[]) {
 	capinfo.grab = NULL;
 	pthread_mutex_unlock(&capinfo.lock);
 
-  return 0;
+	printf("\n");
+	return 0;
 }
 
