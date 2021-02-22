@@ -333,6 +333,8 @@ int main(int argc, char* argv[]) {
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
+	bool filterActive = true;
+
 	// mainloop
 	for(bool running = true; running; ) {
 		// wait for next frame
@@ -353,84 +355,86 @@ int main(int argc, char* argv[]) {
 		ti.copyns=timestamp();
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
-		// map ROI
-		cv::Mat roi = raw(roidim);
+		if (filterActive) {
+			// map ROI
+			cv::Mat roi = raw(roidim);
 
-		// resize ROI to input size
-		cv::Mat in_u8_bgr, in_u8_rgb;
-		cv::resize(roi,in_u8_bgr,cv::Size(input.cols,input.rows));
-		cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
-		// TODO: can convert directly to float?
+			// resize ROI to input size
+			cv::Mat in_u8_bgr, in_u8_rgb;
+			cv::resize(roi,in_u8_bgr,cv::Size(input.cols,input.rows));
+			cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
+			// TODO: can convert directly to float?
 
-		// bilateral filter to reduce noise
-		if (1) {
-			cv::Mat filtered;
-			cv::bilateralFilter(in_u8_rgb,filtered,5,100.0,100.0);
-			in_u8_rgb = filtered;
-		}
-
-		// convert to float and normalize values to [-1;1]
-		in_u8_rgb.convertTo(input,CV_32FC3,1.0/128.0,-1.0);
-		ti.openns=timestamp();
-
-		// Run inference
-		TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
-		ti.tfltns=timestamp();
-
-		float* tmp = (float*)output.data;
-		uint8_t* out = (uint8_t*)ofinal.data;
-
-		// find class with maximum probability
-		if (strstr(modelname,"deeplab"))
-		for (unsigned int n = 0; n < output.total(); n++) {
-			float maxval = -10000; int maxpos = 0;
-			for (int i = 0; i < cnum; i++) {
-				if (tmp[n*cnum+i] > maxval) {
-					maxval = tmp[n*cnum+i];
-					maxpos = i;
-				}
+			// bilateral filter to reduce noise
+			if (1) {
+				cv::Mat filtered;
+				cv::bilateralFilter(in_u8_rgb,filtered,5,100.0,100.0);
+				in_u8_rgb = filtered;
 			}
-			// set mask to 0 where class == person
-			uint8_t val = (maxpos==pers ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
 
-		// threshold probability
-		if (strstr(modelname,"body-pix"))
-		for (unsigned int n = 0; n < output.total(); n++) {
-			// FIXME: hardcoded threshold
-			uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
+			// convert to float and normalize values to [-1;1]
+			in_u8_rgb.convertTo(input,CV_32FC3,1.0/128.0,-1.0);
+			ti.openns=timestamp();
 
-		// Google Meet segmentation network
-		if (strstr(modelname,"segm_"))
-			/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
-			 * tensor for the light model with masks for background
-			 * (channel 0) and person (channel 1) where values are in
-			 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
-			 * softmax across both channels to yield foreground
-			 * probability in [0.0, 1.0]. */
-		for (unsigned int n = 0; n < output.total(); n++) {
-			float exp0 = expf(tmp[2*n  ]);
-			float exp1 = expf(tmp[2*n+1]);
-			float p0 = exp0 / (exp0+exp1);
-			float p1 = exp1 / (exp0+exp1);
-			uint8_t val = (p0 < p1 ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
-		ti.maskns=timestamp();
+			// Run inference
+			TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
+			ti.tfltns=timestamp();
 
-		// denoise
-		cv::Mat tmpbuf;
-		cv::dilate(ofinal,tmpbuf,element);
-		cv::erode(tmpbuf,ofinal,element);
+			float* tmp = (float*)output.data;
+			uint8_t* out = (uint8_t*)ofinal.data;
 
-		// scale up into full-sized mask
-		cv::resize(ofinal,mroi,cv::Size(raw.rows/ratio,raw.rows));
+			// find class with maximum probability
+			if (strstr(modelname,"deeplab"))
+			for (unsigned int n = 0; n < output.total(); n++) {
+				float maxval = -10000; int maxpos = 0;
+				for (int i = 0; i < cnum; i++) {
+					if (tmp[n*cnum+i] > maxval) {
+						maxval = tmp[n*cnum+i];
+						maxpos = i;
+					}
+				}
+				// set mask to 0 where class == person
+				uint8_t val = (maxpos==pers ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
+			}
 
-		// copy background over raw cam image using mask
-		bg.copyTo(raw,mask);
+			// threshold probability
+			if (strstr(modelname,"body-pix"))
+			for (unsigned int n = 0; n < output.total(); n++) {
+				// FIXME: hardcoded threshold
+				uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
+			}
+
+			// Google Meet segmentation network
+			if (strstr(modelname,"segm_"))
+				/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
+				 * tensor for the light model with masks for background
+				 * (channel 0) and person (channel 1) where values are in
+				 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
+				 * softmax across both channels to yield foreground
+				 * probability in [0.0, 1.0]. */
+			for (unsigned int n = 0; n < output.total(); n++) {
+				float exp0 = expf(tmp[2*n  ]);
+				float exp1 = expf(tmp[2*n+1]);
+				float p0 = exp0 / (exp0+exp1);
+				float p1 = exp1 / (exp0+exp1);
+				uint8_t val = (p0 < p1 ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
+			}
+			ti.maskns=timestamp();
+
+			// denoise
+			cv::Mat tmpbuf;
+			cv::dilate(ofinal,tmpbuf,element);
+			cv::erode(tmpbuf,ofinal,element);
+
+			// scale up into full-sized mask
+			cv::resize(ofinal,mroi,cv::Size(raw.rows/ratio,raw.rows));
+
+			// copy background over raw cam image using mask
+			bg.copyTo(raw,mask);
+		} // filterActive
 
 		if (flipHorizontal && flipVertical) {
 			cv::flip(raw,raw,-1);
@@ -481,6 +485,9 @@ int main(int argc, char* argv[]) {
 		switch(keyPress) {
 			case 'q':
 				running = false;
+				break;
+			case 's':
+				filterActive = !filterActive;
 				break;
 			case 'h':
 				flipHorizontal = !flipHorizontal;
