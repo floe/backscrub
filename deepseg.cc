@@ -14,6 +14,7 @@ limitations under the License.
 
 #include <unistd.h>
 #include <cstdio>
+#include <chrono>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -83,12 +84,38 @@ cv::Mat getTensorMat(int tnum, int debug) {
 // deeplabv3 classes
 std::vector<std::string> labels = { "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "dining table", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv" };
 
+// timing helpers
+typedef std::chrono::high_resolution_clock::time_point timestamp_t;
+typedef struct {
+	timestamp_t bootns;
+	timestamp_t lastns;
+	timestamp_t waitns;
+	timestamp_t lockns;
+	timestamp_t copyns;
+	timestamp_t openns;
+	timestamp_t tfltns;
+	timestamp_t maskns;
+	timestamp_t postns;
+	timestamp_t v4l2ns;
+	// these are already converted to ns
+	long grabns;
+	long retrns;
+} timinginfo_t;
+
+timestamp_t timestamp() {
+	return std::chrono::high_resolution_clock::now();
+}
+long diffnanosecs(timestamp_t t1, timestamp_t t2) {
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t2).count();
+}
+
 // threaded capture shared state
 typedef struct {
 	cv::VideoCapture *cap;
 	cv::Mat *grab;
 	cv::Mat *raw;
 	int64 cnt;
+	timinginfo_t *pti;
 	pthread_mutex_t lock;
 } capinfo_t;
 
@@ -98,12 +125,18 @@ void *grab_thread(void *arg) {
 	bool done = false;
 	// while we have a grab frame.. grab frames
 	while (!done) {
+		timestamp_t ts = timestamp();
 		ci->cap->grab();
+		long ns = diffnanosecs(timestamp(),ts);
 		pthread_mutex_lock(&ci->lock);
-		if (ci->grab!=NULL)
+		ci->pti->grabns = ns;
+		if (ci->grab!=NULL) {
+			ts = timestamp();
 			ci->cap->retrieve(*ci->grab);
-		else
+			ci->pti->retrns = diffnanosecs(timestamp(),ts);
+		} else {
 			done = true;
+		}
 		ci->cnt++;
 		pthread_mutex_unlock(&ci->lock);
 	}
@@ -115,7 +148,8 @@ int main(int argc, char* argv[]) {
 	printf("deepseg v0.2.0\n");
 	printf("(c) 2021 by floe@butterbrot.org\n");
 	printf("https://github.com/floe/deepbacksub\n");
-
+	timinginfo_t ti;
+	ti.bootns = timestamp();
 	int debug  = 0;
 	int threads= 2;
 	int width  = 640;
@@ -293,11 +327,13 @@ int main(int argc, char* argv[]) {
 	cv::Mat buf1;
 	cv::Mat buf2;
 	int64 oldcnt = 0;
-	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, PTHREAD_MUTEX_INITIALIZER };
+	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, &ti, PTHREAD_MUTEX_INITIALIZER };
 	if (pthread_create(&grabber, NULL, grab_thread, &capinfo)) {
 		perror("creating grabber thread");
 		exit(1);
 	}
+	ti.lastns = timestamp();
+	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
 	// mainloop
 	for(bool running = true; running; ) {
@@ -305,15 +341,18 @@ int main(int argc, char* argv[]) {
 		while (capinfo.cnt == oldcnt) usleep(10000);
 		oldcnt = capinfo.cnt;
 		int e1 = cv::getTickCount();
+		ti.waitns=timestamp();
 
 		// switch buffer pointers in capture thread
 		pthread_mutex_lock(&capinfo.lock);
+		ti.lockns=timestamp();
 		cv::Mat *tmat = capinfo.grab;
 		capinfo.grab = capinfo.raw;
 		capinfo.raw = tmat;
 		pthread_mutex_unlock(&capinfo.lock);
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
 		cv::Mat raw = (*capinfo.raw);
+		ti.copyns=timestamp();
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
 		// map ROI
@@ -334,9 +373,11 @@ int main(int argc, char* argv[]) {
 
 		// convert to float and normalize values to [-1;1]
 		in_u8_rgb.convertTo(input,CV_32FC3,1.0/128.0,-1.0);
+		ti.openns=timestamp();
 
 		// Run inference
 		TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
+		ti.tfltns=timestamp();
 
 		float* tmp = (float*)output.data;
 		uint8_t* out = (uint8_t*)ofinal.data;
@@ -380,6 +421,7 @@ int main(int argc, char* argv[]) {
 			uint8_t val = (p0 < p1 ? 0 : 255);
 			out[n] = (val & 0xE0) | (out[n] >> 3);
 		}
+		ti.maskns=timestamp();
 
 		// denoise
 		cv::Mat tmpbuf;
@@ -402,6 +444,7 @@ int main(int argc, char* argv[]) {
 		if (flipVertical) {
 			cv::flip(raw,raw,0);
 		}
+		ti.postns=timestamp();
 
 		// write frame to v4l2loopback
 		int framesize = raw.step[0]*raw.rows;
@@ -410,13 +453,28 @@ int main(int argc, char* argv[]) {
 			TFLITE_MINIMAL_CHECK(ret > 0);
 			framesize -= ret;
 		}
+		ti.v4l2ns=timestamp();
 
 		if (!debug) { printf("."); fflush(stdout); continue; }
+
+		// timing details..
+		printf("wait:%ld lock:%ld [grab:%ld retr:%ld] copy:%ld open:%ld tflt:%ld mask:%ld post:%ld v4l2:%ld ",
+			diffnanosecs(ti.waitns,ti.lastns),
+			diffnanosecs(ti.lockns,ti.waitns),
+			ti.grabns,
+			ti.retrns,
+			diffnanosecs(ti.copyns,ti.lockns),
+			diffnanosecs(ti.openns,ti.copyns),
+			diffnanosecs(ti.tfltns,ti.openns),
+			diffnanosecs(ti.maskns,ti.tfltns),
+			diffnanosecs(ti.postns,ti.maskns),
+			diffnanosecs(ti.v4l2ns,ti.postns));
 
 		int e2 = cv::getTickCount();
 		float t = (e2-e1)/cv::getTickFrequency();
 		printf("FPS: %5.2f\r",1.0/t);
 		fflush(stdout);
+		ti.lastns = timestamp();
 		if (debug < 2) continue;
 
 		cv::Mat test;
