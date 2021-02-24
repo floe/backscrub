@@ -70,7 +70,7 @@ cv::Mat getTensorMat(int tnum, int debug) {
 	TfLiteIntArray* dims = interpreter->tensor(tnum)->dims;
 	if (debug) for (int i = 0; i < dims->size; i++) printf("tensor #%d: %d\n",tnum,dims->data[i]);
 	TFLITE_MINIMAL_CHECK(dims->data[0] == 1);
-	
+
 	int h = dims->data[1];
 	int w = dims->data[2];
 	int c = dims->data[3];
@@ -151,6 +151,7 @@ int main(int argc, char* argv[]) {
 	timinginfo_t ti;
 	ti.bootns = timestamp();
 	int debug  = 0;
+	bool showProgress = false;
 	int threads= 2;
 	int width  = 640;
 	int height = 480;
@@ -169,6 +170,8 @@ int main(int argc, char* argv[]) {
 			showUsage = true;
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
+		} else if (strncmp(argv[arg], "-p", 2)==0) {
+			showProgress = true;
 		} else if (strncmp(argv[arg], "-H", 2)==0) {
 			flipHorizontal = !flipHorizontal;
 		} else if (strncmp(argv[arg], "-V", 2)==0) {
@@ -227,11 +230,12 @@ int main(int argc, char* argv[]) {
 	if (showUsage) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "usage:\n");
-		fprintf(stderr, "  deepseg [-?] [-d] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
+		fprintf(stderr, "  deepseg [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
 		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>]\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "-?            Display this usage information\n");
 		fprintf(stderr, "-d            Increase debug level\n");
+		fprintf(stderr, "-p            Show progress bar\n");
 		fprintf(stderr, "-c            Specify the video source (capture) device\n");
 		fprintf(stderr, "-v            Specify the video target (sink) device\n");
 		fprintf(stderr, "-w            Specify the video stream width\n");
@@ -451,7 +455,13 @@ int main(int argc, char* argv[]) {
 		}
 		ti.v4l2ns=timestamp();
 
-		if (!debug) { printf("."); fflush(stdout); continue; }
+		if (!debug) {
+			if (showProgress) {
+				printf(".");
+				fflush(stdout);
+			}
+			continue;
+		}
 
 		// timing details..
 		printf("wait:%9ld lock:%9ld [grab:%9ld retr:%9ld] copy:%9ld open:%9ld tflt:%9ld mask:%9ld post:%9ld v4l2:%9ld ",
@@ -498,4 +508,3 @@ int main(int argc, char* argv[]) {
 	printf("\n");
 	return 0;
 }
-
