@@ -1,3 +1,4 @@
+# this is licensed software, @see LICENSE file.
 CFLAGS = -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-math-optimizations -Wall -pthread
 LDFLAGS = -lrt -ldl
 
