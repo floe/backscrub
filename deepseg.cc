@@ -15,6 +15,8 @@ limitations under the License.
 #include <unistd.h>
 #include <cstdio>
 #include <chrono>
+#include <string>
+
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -28,6 +30,30 @@ limitations under the License.
 
 #include "loopback.h"
 #include "transpose_conv_bias.h"
+
+int fourCcFromString(const std::string& in)
+{
+	if (in.empty())
+		return 0;
+
+	if (in.size() <= 4)
+	{
+		// fourcc codes are up to 4 bytes long, right-space-padded and upper-case
+		// c.f. http://ffmpeg.org/doxygen/trunk/isom_8c-source.html and
+		// c.f. https://www.fourcc.org/codecs.php
+		std::array<uint8_t, 4> a = {' ', ' ', ' ', ' '};
+		for (auto i = 0; i < in.size(); ++i)
+			a[i] = ::toupper(in[i]);
+		return cv::VideoWriter::fourcc(a[0], a[1], a[2], a[3]);
+	}
+	else if (in.size() == 8)
+	{
+		// Most people seem to agree on 0x47504A4D being the fourcc code of "MJPG", not the literal translation
+		// 0x4D4A5047. This is also what ffmpeg expects.
+		return std::stoi(in, nullptr, 16);
+	}
+	return 0;
+}
 
 // OpenCV helper functions
 cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
@@ -159,6 +185,7 @@ int main(int argc, char* argv[]) {
 	const char *ccam = "/dev/video1";
 	bool flipHorizontal = false;
 	bool flipVertical   = false;
+	int fourcc = 0;
 
 	const char* modelname = "models/segm_full_v679.tflite";
 
@@ -213,6 +240,15 @@ int main(int argc, char* argv[]) {
 			} else {
 				showUsage = true;
 			}
+		} else if (strncmp(argv[arg], "-f", 2)==0) {
+			if (hasArgument) {
+				fourcc = fourCcFromString(argv[++arg]);
+				if (!fourcc) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
 		} else if (strncmp(argv[arg], "-t", 2)==0) {
 			if (hasArgument && sscanf(argv[++arg], "%d", &threads)) {
 				if (!threads) {
@@ -236,6 +272,7 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "-v            Specify the video target (sink) device\n");
 		fprintf(stderr, "-w            Specify the video stream width\n");
 		fprintf(stderr, "-h            Specify the video stream height\n");
+		fprintf(stderr, "-f            Specify the camera video format, i.e. MJPG or 47504A4D.\n");
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
 		fprintf(stderr, "-b            Specify the background image\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
@@ -278,6 +315,8 @@ int main(int argc, char* argv[]) {
 
 	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+	if (fourcc)
+		cap.set(CV_CAP_PROP_FOURCC, fourcc);
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
 	// Load model

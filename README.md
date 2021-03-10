@@ -130,6 +130,8 @@ Then, run deepseg (-d -d for full debug, -c for capture device, -v for virtual d
 ./deepseg -d -d -c /dev/video0 -v /dev/video1
 ```
 
+Some cameras like a *Logitec Brio* might need to switch the video source to `MJPG` by passing `-f MJPG` in order to allow for higher resolutions.
+
 ## Limitations/Extensions
 
 As usual: pull requests welcome.
