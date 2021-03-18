@@ -42,7 +42,7 @@ int fourCcFromString(const std::string& in)
 		// c.f. http://ffmpeg.org/doxygen/trunk/isom_8c-source.html and
 		// c.f. https://www.fourcc.org/codecs.php
 		std::array<uint8_t, 4> a = {' ', ' ', ' ', ' '};
-		for (auto i = 0; i < in.size(); ++i)
+		for (size_t i = 0; i < in.size(); ++i)
 			a[i] = ::toupper(in[i]);
 		return cv::VideoWriter::fourcc(a[0], a[1], a[2], a[3]);
 	}
