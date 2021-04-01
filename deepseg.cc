@@ -108,7 +108,10 @@ cv::Mat getTensorMat(int tnum, int debug) {
 }
 
 // deeplabv3 classes
-std::vector<std::string> labels = { "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "dining table", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv" };
+const std::vector<std::string> labels = { "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "dining table", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv" };
+// label number of "person" for DeepLab v3+ model
+const size_t cnum = labels.size();
+const size_t pers = std::distance(labels.begin(), std::find(labels.begin(),labels.end(),"person"));
 
 // timing helpers
 typedef std::chrono::high_resolution_clock::time_point timestamp_t;
@@ -145,6 +148,24 @@ typedef struct {
 	pthread_mutex_t lock;
 } capinfo_t;
 
+typedef struct {
+	const char *modelname;
+	size_t threads;
+	size_t width;
+	size_t height;
+	int debug;
+	std::unique_ptr<tflite::FlatBufferModel> model;
+	cv::Mat input;
+	cv::Mat output;
+	cv::Rect roidim;
+	cv::Mat mask;
+	cv::Mat mroi;
+	cv::Mat raw;
+	cv::Mat ofinal;
+	cv::Mat element;
+	float ratio;
+} calcinfo_t;
+
 // capture thread function
 void *grab_thread(void *arg) {
 	capinfo_t *ci = (capinfo_t *)arg;
@@ -178,9 +199,9 @@ int main(int argc, char* argv[]) {
 	ti.bootns = timestamp();
 	int debug  = 0;
 	bool showProgress = false;
-	int threads= 2;
-	int width  = 640;
-	int height = 480;
+	size_t threads= 2;
+	size_t width  = 640;
+	size_t height = 480;
 	const char *back = nullptr; // "images/background.png";
 	const char *vcam = "/dev/video0";
 	const char *ccam = "/dev/video1";
@@ -228,7 +249,7 @@ int main(int argc, char* argv[]) {
 				showUsage = true;
 			}
 		} else if (strncmp(argv[arg], "-w", 2)==0) {
-			if (hasArgument && sscanf(argv[++arg], "%d", &width)) {
+			if (hasArgument && sscanf(argv[++arg], "%zu", &width)) {
 				if (!width) {
 					showUsage = true;
 				}
@@ -236,7 +257,7 @@ int main(int argc, char* argv[]) {
 				showUsage = true;
 			}
 		} else if (strncmp(argv[arg], "-h", 2)==0) {
-			if (hasArgument && sscanf(argv[++arg], "%d", &height)) {
+			if (hasArgument && sscanf(argv[++arg], "%zu", &height)) {
 				if (!height) {
 					showUsage = true;
 				}
@@ -253,7 +274,7 @@ int main(int argc, char* argv[]) {
 				showUsage = true;
 			}
 		} else if (strncmp(argv[arg], "-t", 2)==0) {
-			if (hasArgument && sscanf(argv[++arg], "%d", &threads)) {
+			if (hasArgument && sscanf(argv[++arg], "%zu", &threads)) {
 				if (!threads) {
 					showUsage = true;
 				}
@@ -288,11 +309,11 @@ int main(int argc, char* argv[]) {
 	printf("debug:  %d\n", debug);
 	printf("ccam:   %s\n", ccam);
 	printf("vcam:   %s\n", vcam);
-	printf("width:  %d\n", width);
-	printf("height: %d\n", height);
+	printf("width:  %zu\n", width);
+	printf("height: %zu\n", height);
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
-	printf("threads:%d\n", threads);
+	printf("threads:%zu\n", threads);
 	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
 
@@ -323,16 +344,17 @@ int main(int argc, char* argv[]) {
 		cap.set(CV_CAP_PROP_FOURCC, fourcc);
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
+	calcinfo_t calcinfo = { modelname, threads, width, height, debug };
+
 	// Load model
-	std::unique_ptr<tflite::FlatBufferModel> model =
-		tflite::FlatBufferModel::BuildFromFile(modelname);
-	TFLITE_MINIMAL_CHECK(model != nullptr);
+	calcinfo.model = tflite::FlatBufferModel::BuildFromFile(calcinfo.modelname);
+	TFLITE_MINIMAL_CHECK(calcinfo.model != nullptr);
 
 	// Build the interpreter
 	tflite::ops::builtin::BuiltinOpResolver resolver;
 	// custom op for Google Meet network
 	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
-	InterpreterBuilder builder(*model, resolver);
+	InterpreterBuilder builder(*calcinfo.model, resolver);
 	builder(&interpreter);
 	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
 
@@ -340,28 +362,28 @@ int main(int argc, char* argv[]) {
 	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
 
 	// set interpreter params
-	interpreter->SetNumThreads(threads);
+	interpreter->SetNumThreads(calcinfo.threads);
 	interpreter->SetAllowFp16PrecisionForFp32(true);
 
 	// get input and output tensor as cv::Mat
-	cv::Mat  input = getTensorMat(interpreter->inputs ()[0],debug);
- 	cv::Mat output = getTensorMat(interpreter->outputs()[0],debug);
-	float ratio = (float)input.cols/(float) input.rows;
+	calcinfo.input = getTensorMat(interpreter->inputs ()[0],calcinfo.debug);
+	calcinfo.output = getTensorMat(interpreter->outputs()[0],calcinfo.debug);
+	calcinfo.ratio = (float)calcinfo.input.cols/(float) calcinfo.input.rows;
 
 	// initialize mask and square ROI in center
-	cv::Rect roidim = cv::Rect((width-height/ratio)/2,0,height/ratio,height);
-	cv::Mat mask = cv::Mat::ones(height,width,CV_8UC1);
-	cv::Mat mroi = mask(roidim);
+	calcinfo.roidim = cv::Rect((calcinfo.width-calcinfo.height/calcinfo.ratio)/2,0,calcinfo.height/calcinfo.ratio,calcinfo.height);
+	calcinfo.mask = cv::Mat::ones(calcinfo.height,calcinfo.width,CV_8UC1);
+	calcinfo.mroi = calcinfo.mask(calcinfo.roidim);
 
 	// erosion/dilation element
-	cv::Mat element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
+	calcinfo.element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
 
 	// create Mat for small mask
-	cv::Mat ofinal(output.rows,output.cols,CV_8UC1);
+	calcinfo.ofinal = cv::Mat(calcinfo.output.rows,calcinfo.output.cols,CV_8UC1);
 
 	// label number of "person" for DeepLab v3+ model
-	const int cnum = labels.size();
-	const int pers = std::find(labels.begin(),labels.end(),"person") - labels.begin();
+	const size_t cnum = labels.size();
+	const size_t pers = std::find(labels.begin(),labels.end(),"person") - labels.begin();
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
 	pthread_t grabber;
@@ -394,17 +416,18 @@ int main(int argc, char* argv[]) {
 		capinfo.raw = tmat;
 		pthread_mutex_unlock(&capinfo.lock);
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
-		cv::Mat raw = (*capinfo.raw);
+		calcinfo.raw = *capinfo.raw;
 		ti.copyns=timestamp();
-		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
+		if (calcinfo.raw.rows == 0 || calcinfo.raw.cols == 0) continue; // sanity check
 
 		if (filterActive) {
+
 			// map ROI
-			cv::Mat roi = raw(roidim);
+			cv::Mat roi = calcinfo.raw(calcinfo.roidim);
 
 			// resize ROI to input size
 			cv::Mat in_u8_bgr, in_u8_rgb;
-			cv::resize(roi,in_u8_bgr,cv::Size(input.cols,input.rows));
+			cv::resize(roi,in_u8_bgr,cv::Size(calcinfo.input.cols,calcinfo.input.rows));
 			cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
 			// TODO: can convert directly to float?
 
@@ -416,83 +439,86 @@ int main(int argc, char* argv[]) {
 			}
 
 			// convert to float and normalize values to [-1;1]
-			in_u8_rgb.convertTo(input,CV_32FC3,1.0/128.0,-1.0);
+			in_u8_rgb.convertTo(calcinfo.input,CV_32FC3,1.0/128.0,-1.0);
 			ti.openns=timestamp();
 
 			// Run inference
 			TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
 			ti.tfltns=timestamp();
 
-			float* tmp = (float*)output.data;
-			uint8_t* out = (uint8_t*)ofinal.data;
+			float* tmp = (float*)calcinfo.output.data;
+			uint8_t* out = (uint8_t*)calcinfo.ofinal.data;
 
 			// find class with maximum probability
-			if (strstr(modelname,"deeplab"))
-			for (unsigned int n = 0; n < output.total(); n++) {
-				float maxval = -10000; int maxpos = 0;
-				for (int i = 0; i < cnum; i++) {
-					if (tmp[n*cnum+i] > maxval) {
-						maxval = tmp[n*cnum+i];
-						maxpos = i;
+			if (strstr(calcinfo.modelname,"deeplab")) {
+				for (unsigned int n = 0; n < calcinfo.output.total(); n++) {
+					float maxval = -10000; size_t maxpos = 0;
+					for (size_t i = 0; i < cnum; i++) {
+						if (tmp[n*cnum+i] > maxval) {
+							maxval = tmp[n*cnum+i];
+							maxpos = i;
+						}
 					}
+					// set mask to 0 where class == person
+					uint8_t val = (maxpos==pers ? 0 : 255);
+					out[n] = (val & 0xE0) | (out[n] >> 3);
 				}
-				// set mask to 0 where class == person
-				uint8_t val = (maxpos==pers ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
 			}
 
 			// threshold probability
-			if (strstr(modelname,"body-pix"))
-			for (unsigned int n = 0; n < output.total(); n++) {
-				// FIXME: hardcoded threshold
-				uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
+			if (strstr(calcinfo.modelname,"body-pix")) {
+				for (unsigned int n = 0; n < calcinfo.output.total(); n++) {
+					// FIXME: hardcoded threshold
+					uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+					out[n] = (val & 0xE0) | (out[n] >> 3);
+				}
 			}
 
 			// Google Meet segmentation network
-			if (strstr(modelname,"segm_"))
+			if (strstr(calcinfo.modelname,"segm_")) {
 				/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
-				 * tensor for the light model with masks for background
-				 * (channel 0) and person (channel 1) where values are in
-				 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
-				 * softmax across both channels to yield foreground
-				 * probability in [0.0, 1.0]. */
-			for (unsigned int n = 0; n < output.total(); n++) {
-				float exp0 = expf(tmp[2*n  ]);
-				float exp1 = expf(tmp[2*n+1]);
-				float p0 = exp0 / (exp0+exp1);
-				float p1 = exp1 / (exp0+exp1);
-				uint8_t val = (p0 < p1 ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
+				* tensor for the light model with masks for background
+				* (channel 0) and person (channel 1) where values are in
+				* range [MIN_FLOAT, MAX_FLOAT] and user has to apply
+				* softmax across both channels to yield foreground
+				* probability in [0.0, 1.0]. */
+				for (unsigned int n = 0; n < calcinfo.output.total(); n++) {
+					float exp0 = expf(tmp[2*n  ]);
+					float exp1 = expf(tmp[2*n+1]);
+					float p0 = exp0 / (exp0+exp1);
+					float p1 = exp1 / (exp0+exp1);
+					uint8_t val = (p0 < p1 ? 0 : 255);
+					out[n] = (val & 0xE0) | (out[n] >> 3);
+				}
 			}
 			ti.maskns=timestamp();
 
 			// denoise
 			cv::Mat tmpbuf;
-			cv::dilate(ofinal,tmpbuf,element);
-			cv::erode(tmpbuf,ofinal,element);
+			cv::dilate(calcinfo.ofinal,tmpbuf,calcinfo.element);
+			cv::erode(tmpbuf,calcinfo.ofinal,calcinfo.element);
 
 			// scale up into full-sized mask
-			cv::resize(ofinal,mroi,cv::Size(raw.rows/ratio,raw.rows));
+			cv::resize(calcinfo.ofinal,calcinfo.mroi,cv::Size(calcinfo.raw.rows/calcinfo.ratio,calcinfo.raw.rows));
 
 			// copy background over raw cam image using mask
-			bg.copyTo(raw,mask);
+			bg.copyTo(calcinfo.raw,calcinfo.mask);
 		} // filterActive
 
 		if (flipHorizontal && flipVertical) {
-			cv::flip(raw,raw,-1);
+			cv::flip(calcinfo.raw,calcinfo.raw,-1);
 		} else if (flipHorizontal) {
-			cv::flip(raw,raw,1);
+			cv::flip(calcinfo.raw,calcinfo.raw,1);
 		} else if (flipVertical) {
-			cv::flip(raw,raw,0);
+			cv::flip(calcinfo.raw,calcinfo.raw,0);
 		}
 		ti.postns=timestamp();
 
 		// write frame to v4l2loopback as YUYV
-		raw = convert_rgb_to_yuyv(raw);
-		int framesize = raw.step[0]*raw.rows;
+		calcinfo.raw = convert_rgb_to_yuyv(calcinfo.raw);
+		int framesize = calcinfo.raw.step[0]*calcinfo.raw.rows;
 		while (framesize > 0) {
-			int ret = write(lbfd,raw.data,framesize);
+			int ret = write(lbfd,calcinfo.raw.data,framesize);
 			TFLITE_MINIMAL_CHECK(ret > 0);
 			framesize -= ret;
 		}
@@ -527,7 +553,7 @@ int main(int argc, char* argv[]) {
 		if (debug < 2) continue;
 
 		cv::Mat test;
-		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
+		cv::cvtColor(calcinfo.raw,test,CV_YUV2BGR_YUYV);
 		cv::imshow("output.png",test);
 
 		auto keyPress = cv::waitKey(1);
