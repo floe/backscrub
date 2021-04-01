@@ -190,6 +190,125 @@ void *grab_thread(void *arg) {
 	return NULL;
 }
 
+void init_tensorflow(calcinfo_t &info) {
+	// Load model
+	info.model = tflite::FlatBufferModel::BuildFromFile(info.modelname);
+	TFLITE_MINIMAL_CHECK(info.model != nullptr);
+
+	// Build the interpreter
+	tflite::ops::builtin::BuiltinOpResolver resolver;
+	// custom op for Google Meet network
+	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
+	InterpreterBuilder builder(*info.model, resolver);
+	builder(&interpreter);
+	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
+
+	// Allocate tensor buffers.
+	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
+
+	// set interpreter params
+	interpreter->SetNumThreads(info.threads);
+	interpreter->SetAllowFp16PrecisionForFp32(true);
+
+	// get input and output tensor as cv::Mat
+	info.input = getTensorMat(interpreter->inputs ()[0],info.debug);
+	info.output = getTensorMat(interpreter->outputs()[0],info.debug);
+	info.ratio = (float)info.input.cols/(float) info.input.rows;
+
+	// initialize mask and square ROI in center
+	info.roidim = cv::Rect((info.width-info.height/info.ratio)/2,0,info.height/info.ratio,info.height);
+	info.mask = cv::Mat::ones(info.height,info.width,CV_8UC1);
+	info.mroi = info.mask(info.roidim);
+
+	// erosion/dilation element
+	info.element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
+
+	// create Mat for small mask
+	info.ofinal = cv::Mat(info.output.rows,info.output.cols,CV_8UC1);
+}
+
+void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
+	// map ROI
+	cv::Mat roi = info.raw(info.roidim);
+
+	// resize ROI to input size
+	cv::Mat in_u8_bgr, in_u8_rgb;
+	cv::resize(roi,in_u8_bgr,cv::Size(info.input.cols,info.input.rows));
+	cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
+	// TODO: can convert directly to float?
+
+	// bilateral filter to reduce noise
+	if (1) {
+		cv::Mat filtered;
+		cv::bilateralFilter(in_u8_rgb,filtered,5,100.0,100.0);
+		in_u8_rgb = filtered;
+	}
+
+	// convert to float and normalize values to [-1;1]
+	in_u8_rgb.convertTo(info.input,CV_32FC3,1.0/128.0,-1.0);
+	ti.openns=timestamp();
+
+
+	// Run inference
+	TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
+	ti.tfltns=timestamp();
+
+	float* tmp = (float*)info.output.data;
+	uint8_t* out = (uint8_t*)info.ofinal.data;
+
+	// find class with maximum probability
+	if (strstr(info.modelname,"deeplab")) {
+		for (unsigned int n = 0; n < info.output.total(); n++) {
+			float maxval = -10000; size_t maxpos = 0;
+			for (size_t i = 0; i < cnum; i++) {
+				if (tmp[n*cnum+i] > maxval) {
+					maxval = tmp[n*cnum+i];
+					maxpos = i;
+				}
+			}
+			// set mask to 0 where class == person
+			uint8_t val = (maxpos==pers ? 0 : 255);
+			out[n] = (val & 0xE0) | (out[n] >> 3);
+		}
+	}
+
+	// threshold probability
+	if (strstr(info.modelname,"body-pix")) {
+		for (unsigned int n = 0; n < info.output.total(); n++) {
+			// FIXME: hardcoded threshold
+			uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+			out[n] = (val & 0xE0) | (out[n] >> 3);
+		}
+	}
+
+	// Google Meet segmentation network
+	if (strstr(info.modelname,"segm_")) {
+		/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
+		 * tensor for the light model with masks for background
+		 * (channel 0) and person (channel 1) where values are in
+		 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
+		 * softmax across both channels to yield foreground
+		 * probability in [0.0, 1.0]. */
+		for (unsigned int n = 0; n < info.output.total(); n++) {
+			float exp0 = expf(tmp[2*n  ]);
+			float exp1 = expf(tmp[2*n+1]);
+			float p0 = exp0 / (exp0+exp1);
+			float p1 = exp1 / (exp0+exp1);
+			uint8_t val = (p0 < p1 ? 0 : 255);
+			out[n] = (val & 0xE0) | (out[n] >> 3);
+		}
+	}
+	ti.maskns=timestamp();
+
+	// denoise
+	cv::Mat tmpbuf;
+	cv::dilate(info.ofinal,tmpbuf,info.element);
+	cv::erode(tmpbuf,info.ofinal,info.element);
+
+	// scale up into full-sized mask
+	cv::resize(info.ofinal,info.mroi,cv::Size(info.raw.rows/info.ratio,info.raw.rows));
+}
+
 int main(int argc, char* argv[]) {
 
 	printf("deepseg v0.2.0\n");
@@ -345,45 +464,7 @@ int main(int argc, char* argv[]) {
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
 	calcinfo_t calcinfo = { modelname, threads, width, height, debug };
-
-	// Load model
-	calcinfo.model = tflite::FlatBufferModel::BuildFromFile(calcinfo.modelname);
-	TFLITE_MINIMAL_CHECK(calcinfo.model != nullptr);
-
-	// Build the interpreter
-	tflite::ops::builtin::BuiltinOpResolver resolver;
-	// custom op for Google Meet network
-	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
-	InterpreterBuilder builder(*calcinfo.model, resolver);
-	builder(&interpreter);
-	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
-
-	// Allocate tensor buffers.
-	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
-
-	// set interpreter params
-	interpreter->SetNumThreads(calcinfo.threads);
-	interpreter->SetAllowFp16PrecisionForFp32(true);
-
-	// get input and output tensor as cv::Mat
-	calcinfo.input = getTensorMat(interpreter->inputs ()[0],calcinfo.debug);
-	calcinfo.output = getTensorMat(interpreter->outputs()[0],calcinfo.debug);
-	calcinfo.ratio = (float)calcinfo.input.cols/(float) calcinfo.input.rows;
-
-	// initialize mask and square ROI in center
-	calcinfo.roidim = cv::Rect((calcinfo.width-calcinfo.height/calcinfo.ratio)/2,0,calcinfo.height/calcinfo.ratio,calcinfo.height);
-	calcinfo.mask = cv::Mat::ones(calcinfo.height,calcinfo.width,CV_8UC1);
-	calcinfo.mroi = calcinfo.mask(calcinfo.roidim);
-
-	// erosion/dilation element
-	calcinfo.element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
-
-	// create Mat for small mask
-	calcinfo.ofinal = cv::Mat(calcinfo.output.rows,calcinfo.output.cols,CV_8UC1);
-
-	// label number of "person" for DeepLab v3+ model
-	const size_t cnum = labels.size();
-	const size_t pers = std::find(labels.begin(),labels.end(),"person") - labels.begin();
+	init_tensorflow(calcinfo);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
 	pthread_t grabber;
@@ -421,85 +502,8 @@ int main(int argc, char* argv[]) {
 		if (calcinfo.raw.rows == 0 || calcinfo.raw.cols == 0) continue; // sanity check
 
 		if (filterActive) {
-
-			// map ROI
-			cv::Mat roi = calcinfo.raw(calcinfo.roidim);
-
-			// resize ROI to input size
-			cv::Mat in_u8_bgr, in_u8_rgb;
-			cv::resize(roi,in_u8_bgr,cv::Size(calcinfo.input.cols,calcinfo.input.rows));
-			cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
-			// TODO: can convert directly to float?
-
-			// bilateral filter to reduce noise
-			if (1) {
-				cv::Mat filtered;
-				cv::bilateralFilter(in_u8_rgb,filtered,5,100.0,100.0);
-				in_u8_rgb = filtered;
-			}
-
-			// convert to float and normalize values to [-1;1]
-			in_u8_rgb.convertTo(calcinfo.input,CV_32FC3,1.0/128.0,-1.0);
-			ti.openns=timestamp();
-
-			// Run inference
-			TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
-			ti.tfltns=timestamp();
-
-			float* tmp = (float*)calcinfo.output.data;
-			uint8_t* out = (uint8_t*)calcinfo.ofinal.data;
-
-			// find class with maximum probability
-			if (strstr(calcinfo.modelname,"deeplab")) {
-				for (unsigned int n = 0; n < calcinfo.output.total(); n++) {
-					float maxval = -10000; size_t maxpos = 0;
-					for (size_t i = 0; i < cnum; i++) {
-						if (tmp[n*cnum+i] > maxval) {
-							maxval = tmp[n*cnum+i];
-							maxpos = i;
-						}
-					}
-					// set mask to 0 where class == person
-					uint8_t val = (maxpos==pers ? 0 : 255);
-					out[n] = (val & 0xE0) | (out[n] >> 3);
-				}
-			}
-
-			// threshold probability
-			if (strstr(calcinfo.modelname,"body-pix")) {
-				for (unsigned int n = 0; n < calcinfo.output.total(); n++) {
-					// FIXME: hardcoded threshold
-					uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
-					out[n] = (val & 0xE0) | (out[n] >> 3);
-				}
-			}
-
-			// Google Meet segmentation network
-			if (strstr(calcinfo.modelname,"segm_")) {
-				/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
-				* tensor for the light model with masks for background
-				* (channel 0) and person (channel 1) where values are in
-				* range [MIN_FLOAT, MAX_FLOAT] and user has to apply
-				* softmax across both channels to yield foreground
-				* probability in [0.0, 1.0]. */
-				for (unsigned int n = 0; n < calcinfo.output.total(); n++) {
-					float exp0 = expf(tmp[2*n  ]);
-					float exp1 = expf(tmp[2*n+1]);
-					float p0 = exp0 / (exp0+exp1);
-					float p1 = exp1 / (exp0+exp1);
-					uint8_t val = (p0 < p1 ? 0 : 255);
-					out[n] = (val & 0xE0) | (out[n] >> 3);
-				}
-			}
-			ti.maskns=timestamp();
-
-			// denoise
-			cv::Mat tmpbuf;
-			cv::dilate(calcinfo.ofinal,tmpbuf,calcinfo.element);
-			cv::erode(tmpbuf,calcinfo.ofinal,calcinfo.element);
-
-			// scale up into full-sized mask
-			cv::resize(calcinfo.ofinal,calcinfo.mroi,cv::Size(calcinfo.raw.rows/calcinfo.ratio,calcinfo.raw.rows));
+			// do background detection magic
+			calc_mask(calcinfo, ti);
 
 			// copy background over raw cam image using mask
 			bg.copyTo(calcinfo.raw,calcinfo.mask);
