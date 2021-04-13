@@ -273,7 +273,7 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 	}
 
 	// threshold probability
-	if (strstr(info.modelname,"body-pix")) {
+	if (strstr(info.modelname,"body-pix") || strstr(info.modelname,"selfie")) {
 		for (unsigned int n = 0; n < info.output.total(); n++) {
 			// FIXME: hardcoded threshold
 			uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
