@@ -1,36 +1,8 @@
-# Prerequisites
-*.d
+# Output folder
+bin/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# IDE junk
+.vscode/
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-deepseg
+# Model build bits
 models/body-pix/bodypix_*
-tv
