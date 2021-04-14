@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <chrono>
 #include <string>
+#include <thread>
+#include <mutex>
 
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -113,7 +115,7 @@ typedef struct {
 	timestamp_t waitns;
 	timestamp_t lockns;
 	timestamp_t copyns;
-	timestamp_t openns;
+	timestamp_t prepns;
 	timestamp_t tfltns;
 	timestamp_t maskns;
 	timestamp_t postns;
@@ -137,7 +139,7 @@ typedef struct {
 	cv::Mat *raw;
 	int64 cnt;
 	timinginfo_t *pti;
-	pthread_mutex_t lock;
+	std::mutex lock;
 } capinfo_t;
 
 typedef struct {
@@ -159,15 +161,14 @@ typedef struct {
 } calcinfo_t;
 
 // capture thread function
-void *grab_thread(void *arg) {
-	capinfo_t *ci = (capinfo_t *)arg;
+void grab_thread(capinfo_t *ci) {
 	bool done = false;
 	// while we have a grab frame.. grab frames
 	while (!done) {
 		timestamp_t ts = timestamp();
 		ci->cap->grab();
 		long ns = diffnanosecs(timestamp(),ts);
-		pthread_mutex_lock(&ci->lock);
+		ci->lock.lock();
 		ci->pti->grabns = ns;
 		if (ci->grab!=NULL) {
 			ts = timestamp();
@@ -177,9 +178,8 @@ void *grab_thread(void *arg) {
 			done = true;
 		}
 		ci->cnt++;
-		pthread_mutex_unlock(&ci->lock);
+		ci->lock.unlock();
 	}
-	return NULL;
 }
 
 void init_tensorflow(calcinfo_t &info) {
@@ -238,7 +238,7 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 
 	// convert to float and normalize values to [-1;1]
 	in_u8_rgb.convertTo(info.input,CV_32FC3,1.0/128.0,-1.0);
-	ti.openns=timestamp();
+	ti.prepns=timestamp();
 
 
 	// Run inference
@@ -459,15 +459,11 @@ int main(int argc, char* argv[]) {
 	init_tensorflow(calcinfo);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
-	pthread_t grabber;
 	cv::Mat buf1;
 	cv::Mat buf2;
 	int64 oldcnt = 0;
-	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, &ti, PTHREAD_MUTEX_INITIALIZER };
-	if (pthread_create(&grabber, NULL, grab_thread, &capinfo)) {
-		perror("creating grabber thread");
-		exit(1);
-	}
+	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, &ti };
+	std::thread grabber(grab_thread, &capinfo);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -478,16 +474,15 @@ int main(int argc, char* argv[]) {
 		// wait for next frame
 		while (capinfo.cnt == oldcnt) usleep(10000);
 		oldcnt = capinfo.cnt;
-		int e1 = cv::getTickCount();
 		ti.waitns=timestamp();
 
 		// switch buffer pointers in capture thread
-		pthread_mutex_lock(&capinfo.lock);
+		capinfo.lock.lock();
 		ti.lockns=timestamp();
 		cv::Mat *tmat = capinfo.grab;
 		capinfo.grab = capinfo.raw;
 		capinfo.raw = tmat;
-		pthread_mutex_unlock(&capinfo.lock);
+		capinfo.lock.unlock();
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
 		calcinfo.raw = *capinfo.raw;
 		ti.copyns=timestamp();
@@ -499,7 +494,10 @@ int main(int argc, char* argv[]) {
 
 			// copy background over raw cam image using mask
 			bg.copyTo(calcinfo.raw,calcinfo.mask);
-		} // filterActive
+		} else {
+			// fix up timing values
+			ti.maskns=ti.tfltns=ti.prepns=ti.copyns;
+		}
 
 		if (flipHorizontal && flipVertical) {
 			cv::flip(calcinfo.raw,calcinfo.raw,-1);
@@ -529,21 +527,18 @@ int main(int argc, char* argv[]) {
 		}
 
 		// timing details..
-		printf("wait:%9ld lock:%9ld [grab:%9ld retr:%9ld] copy:%9ld open:%9ld tflt:%9ld mask:%9ld post:%9ld v4l2:%9ld ",
+		printf("wait:%9ld lock:%9ld [grab:%9ld retr:%9ld] copy:%9ld prep:%9ld tflt:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f\e[K\r",
 			diffnanosecs(ti.waitns,ti.lastns),
 			diffnanosecs(ti.lockns,ti.waitns),
 			ti.grabns,
 			ti.retrns,
 			diffnanosecs(ti.copyns,ti.lockns),
-			diffnanosecs(ti.openns,ti.copyns),
-			diffnanosecs(ti.tfltns,ti.openns),
+			diffnanosecs(ti.prepns,ti.copyns),
+			diffnanosecs(ti.tfltns,ti.prepns),
 			diffnanosecs(ti.maskns,ti.tfltns),
 			diffnanosecs(ti.postns,ti.maskns),
-			diffnanosecs(ti.v4l2ns,ti.postns));
-
-		int e2 = cv::getTickCount();
-		float t = (e2-e1)/cv::getTickFrequency();
-		printf("FPS: %5.2f\e[K\r",1.0/t);
+			diffnanosecs(ti.v4l2ns,ti.postns),
+			1e9/diffnanosecs(ti.v4l2ns,ti.lastns));
 		fflush(stdout);
 		ti.lastns = timestamp();
 		if (debug < 2) continue;
@@ -569,9 +564,10 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	pthread_mutex_lock(&capinfo.lock);
+	capinfo.lock.lock();
 	capinfo.grab = NULL;
-	pthread_mutex_unlock(&capinfo.lock);
+	capinfo.lock.unlock();
+	grabber.join();
 
 	printf("\n");
 	return 0;
