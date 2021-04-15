@@ -6,6 +6,10 @@ LDFLAGS = -lrt -ldl
 
 # Version
 VERSION=$(shell git describe --all --long --always --dirty)
+ifeq ($(VERSION),)
+	VERSION=v0.2.0-no-git
+endif
+
 CFLAGS += -D DEEPSEG_VERSION=$(VERSION)
 
 # TensorFlow
