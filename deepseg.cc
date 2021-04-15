@@ -168,17 +168,18 @@ void grab_thread(capinfo_t *ci) {
 		timestamp_t ts = timestamp();
 		ci->cap->grab();
 		long ns = diffnanosecs(timestamp(),ts);
-		ci->lock.lock();
-		ci->pti->grabns = ns;
-		if (ci->grab!=NULL) {
-			ts = timestamp();
-			ci->cap->retrieve(*ci->grab);
-			ci->pti->retrns = diffnanosecs(timestamp(),ts);
-		} else {
-			done = true;
+		{
+			std::lock_guard<std::mutex> hold(ci->lock);
+			ci->pti->grabns = ns;
+			if (ci->grab!=NULL) {
+				ts = timestamp();
+				ci->cap->retrieve(*ci->grab);
+				ci->pti->retrns = diffnanosecs(timestamp(),ts);
+			} else {
+				done = true;
+			}
+			ci->cnt++;
 		}
-		ci->cnt++;
-		ci->lock.unlock();
 	}
 }
 
@@ -477,12 +478,13 @@ int main(int argc, char* argv[]) {
 		ti.waitns=timestamp();
 
 		// switch buffer pointers in capture thread
-		capinfo.lock.lock();
-		ti.lockns=timestamp();
-		cv::Mat *tmat = capinfo.grab;
-		capinfo.grab = capinfo.raw;
-		capinfo.raw = tmat;
-		capinfo.lock.unlock();
+		{
+			std::lock_guard<std::mutex> hold(capinfo.lock);
+			ti.lockns=timestamp();
+			cv::Mat *tmat = capinfo.grab;
+			capinfo.grab = capinfo.raw;
+			capinfo.raw = tmat;
+		}
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
 		calcinfo.raw = *capinfo.raw;
 		ti.copyns=timestamp();
@@ -564,9 +566,10 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	capinfo.lock.lock();
-	capinfo.grab = NULL;
-	capinfo.lock.unlock();
+	{
+		std::lock_guard<std::mutex> hold(capinfo.lock);
+		capinfo.grab = NULL;
+	}
 	grabber.join();
 
 	printf("\n");
