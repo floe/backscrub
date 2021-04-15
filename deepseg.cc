@@ -2,7 +2,7 @@
  * Authors - @see AUTHORS file.
 ==============================================================================*/
 
-// tested against tensorflow lite v2.4.0 (static library)
+// tested against tensorflow lite v2.4.1 (static library)
 
 #include <unistd.h>
 #include <cstdio>
@@ -22,6 +22,11 @@
 
 #include "loopback.h"
 #include "transpose_conv_bias.h"
+
+// Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
+// http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).
+#define __STR(X) #X
+#define _STR(X) __STR(X)
 
 int fourCcFromString(const std::string& in)
 {
@@ -303,8 +308,8 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 
 int main(int argc, char* argv[]) {
 
-	printf("deepseg v0.2.0\n");
-	printf("(c) 2021 by floe@butterbrot.org\n");
+	printf("deepseg version:%s\n", _STR(DEEPSEG_VERSION));
+	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
 	printf("https://github.com/floe/deepbacksub\n");
 	timinginfo_t ti;
 	ti.bootns = timestamp();
@@ -550,7 +555,7 @@ int main(int argc, char* argv[]) {
 
 		cv::Mat test;
 		cv::cvtColor(calcinfo.raw,test,CV_YUV2BGR_YUYV);
-		cv::imshow("output.png",test);
+		cv::imshow("Deepseg:" _STR(DEEPSEG_VERSION),test);
 
 		auto keyPress = cv::waitKey(1);
 		switch(keyPress) {

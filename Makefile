@@ -5,7 +5,7 @@ CFLAGS = -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-mat
 LDFLAGS = -lrt -ldl
 
 # Version
-VERSION=$(shell git describe --all --always --dirty)
+VERSION=$(shell git describe --all --long --always --dirty)
 CFLAGS += -D DEEPSEG_VERSION=$(VERSION)
 
 # TensorFlow
