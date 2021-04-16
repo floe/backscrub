@@ -308,7 +308,7 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 
 int main(int argc, char* argv[]) {
 
-	printf("deepseg version:%s\n", _STR(DEEPSEG_VERSION));
+	printf("deepseg version %s\n", _STR(DEEPSEG_VERSION));
 	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
 	printf("https://github.com/floe/deepbacksub\n");
 	timinginfo_t ti;
@@ -555,7 +555,7 @@ int main(int argc, char* argv[]) {
 
 		cv::Mat test;
 		cv::cvtColor(calcinfo.raw,test,CV_YUV2BGR_YUYV);
-		cv::imshow("Deepseg:" _STR(DEEPSEG_VERSION),test);
+		cv::imshow("DeepSeg " _STR(DEEPSEG_VERSION),test);
 
 		auto keyPress = cv::waitKey(1);
 		switch(keyPress) {
