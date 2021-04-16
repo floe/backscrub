@@ -6,6 +6,7 @@ LDFLAGS = -lrt -ldl
 
 # Version
 VERSION=$(shell git describe --all --long --always --dirty)
+# default if outside a git repo..
 ifeq ($(VERSION),)
 	VERSION=v0.2.0-no-git
 endif
@@ -53,11 +54,11 @@ $(TFLITE):
 	git submodule update --init --recursive
 
 # Single file test progs - OpenCV deps only
-$(BIN)/%: %.cc
-	g++ -o $@ $(CFLAGS) $^ $(LDFLAGS)
+$(BIN)/%: %.cc $(BIN)
+	g++ -o $@ $(CFLAGS) $< $(LDFLAGS)
 
-$(BIN)/%: %.cpp
-	g++ -o $@ $(CFLAGS) $^ $(LDFLAGS)
+$(BIN)/%: %.cpp $(BIN)
+	g++ -o $@ $(CFLAGS) $< $(LDFLAGS)
 
-$(BIN)/%: %.c
-	g++ -o $@ $(CFLAGS) $^ $(LDFLAGS)
+$(BIN)/%: %.c $(BIN)
+	g++ -o $@ $(CFLAGS) $< $(LDFLAGS)
