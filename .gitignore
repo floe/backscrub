@@ -1,8 +1,14 @@
 # Output folder
 bin/
 
-# IDE junk
-.vscode/
+# dotfiles and folders
+.*/
+.*
+
+# temporaries
+*~
+*.bak
+*.orig
 
 # Model build bits
 models/body-pix/bodypix_*
