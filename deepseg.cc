@@ -76,6 +76,34 @@ cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
 	return yuyv;
 }
 
+cv::Mat alpha_blend(cv::Mat srca, cv::Mat srcb, cv::Mat mask) {
+	// alpha blend two (8UC3) source images using a mask (8UC1, 255=>srca, 0=>srcb), adapted from:
+	// https://www.learnopencv.com/alpha-blending-using-opencv-cpp-python/
+	// "trust no-one" => we're about to mess with data pointers
+	assert(srca.rows==srcb.rows);
+	assert(srca.cols==srcb.cols);
+	assert(mask.rows==srca.rows);
+	assert(mask.cols==srca.cols);
+	assert(srca.type()==CV_8UC3);
+	assert(srcb.type()==CV_8UC3);
+	assert(mask.type()==CV_8UC1);
+	cv::Mat out = cv::Mat::zeros(srca.size(), srca.type());
+	uint8_t *optr = (uint8_t*)out.data;
+	uint8_t *aptr = (uint8_t*)srca.data;
+	uint8_t *bptr = (uint8_t*)srcb.data;
+	uint8_t *mptr = (uint8_t*)mask.data;
+	int npix = srca.rows * srca.cols;
+	for (int pix=0; pix<npix; ++pix) {
+		// blending weights
+		int aw=(int)(*mptr++), bw=255-aw;
+		// blend each channel byte
+		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
+		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
+		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
+	}
+	return out;
+}
+
 // Tensorflow Lite helper functions
 using namespace tflite;
 
@@ -161,7 +189,7 @@ typedef struct {
 	cv::Mat mroi;
 	cv::Mat raw;
 	cv::Mat ofinal;
-	cv::Mat element;
+	cv::Size blur;
 	float ratio;
 } calcinfo_t;
 
@@ -215,11 +243,11 @@ void init_tensorflow(calcinfo_t &info) {
 
 	// initialize mask and square ROI in center
 	info.roidim = cv::Rect((info.width-info.height/info.ratio)/2,0,info.height/info.ratio,info.height);
-	info.mask = cv::Mat::ones(info.height,info.width,CV_8UC1);
+	info.mask = cv::Mat::ones(info.height,info.width,CV_8UC1)*255;
 	info.mroi = info.mask(info.roidim);
 
-	// erosion/dilation element
-	info.element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
+	// mask blurring size
+	info.blur = cv::Size(5,5);
 
 	// create Mat for small mask
 	info.ofinal = cv::Mat(info.output.rows,info.output.cols,CV_8UC1);
@@ -298,13 +326,12 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 	}
 	ti.maskns=timestamp();
 
-	// denoise
-	cv::Mat tmpbuf;
-	cv::dilate(info.ofinal,tmpbuf,info.element);
-	cv::erode(tmpbuf,info.ofinal,info.element);
-
 	// scale up into full-sized mask
-	cv::resize(info.ofinal,info.mroi,cv::Size(info.raw.rows/info.ratio,info.raw.rows));
+	cv::Mat tmpbuf;
+	cv::resize(info.ofinal,tmpbuf,cv::Size(info.raw.rows/info.ratio,info.raw.rows));
+
+	// blur at full size for maximum smoothness
+	cv::blur(tmpbuf,info.mroi,info.blur);
 }
 
 int main(int argc, char* argv[]) {
@@ -499,8 +526,8 @@ int main(int argc, char* argv[]) {
 			// do background detection magic
 			calc_mask(calcinfo, ti);
 
-			// copy background over raw cam image using mask
-			bg.copyTo(calcinfo.raw,calcinfo.mask);
+			// alpha blend background over foreground using mask
+			calcinfo.raw = alpha_blend(bg, calcinfo.raw, calcinfo.mask);
 		} else {
 			// fix up timing values
 			ti.maskns=ti.tfltns=ti.prepns=ti.copyns;
