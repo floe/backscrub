@@ -44,14 +44,14 @@ $(BIN):
 	-mkdir -p $(BIN)
 
 # Primary binaries - special deps
-$(BIN)/deepseg: deepseg.cc loopback.cc $(BIN)/libdeepseg.a
+$(BIN)/deepseg: deepseg.cc loopback.cc $(BIN)/libbackscrub.a
 	g++ $^ ${CFLAGS} ${TFCFLAGS} ${LDFLAGS} ${TFLDFLAGS} -o $@
 
 # Unusual archive munging here is the nicest way to ensure we have Tensorflow Lite & our library code
 # easily accessible through one static library
-$(BIN)/libdeepseg.a: $(BIN)/libdeepseg.o $(BIN)/transpose_conv_bias.o $(TFLIBS)/libtensorflow-lite.a
+$(BIN)/libbackscrub.a: $(BIN)/libbackscrub.o $(BIN)/transpose_conv_bias.o $(TFLIBS)/libtensorflow-lite.a
 	cp -p $(TFLIBS)/libtensorflow-lite.a $@
-	ar rv $@ $(BIN)/libdeepseg.o $(BIN)/transpose_conv_bias.o
+	ar rv $@ $(BIN)/libbackscrub.o $(BIN)/transpose_conv_bias.o
 
 $(BIN)/%.o: %.cc
 	g++ $^ ${CFLAGS} ${TFCFLAGS} -c -o $@

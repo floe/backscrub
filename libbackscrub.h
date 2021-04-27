@@ -3,8 +3,8 @@
 ==============================================================================*/
 
 // tested against tensorflow lite v2.4.1 (static library)
-#ifndef _LIBDEEPSEG_H
-#define _LIBDEEPSEG_H
+#ifndef _LIBBACKSCRUB_H
+#define _LIBBACKSCRUB_H
 
 // for cv::Mat and related types
 #include <opencv2/core/core.hpp>
@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-// Shared state structure between caller and libdeepseg
+// Shared state structure between caller and libbackscrub
 typedef struct {
 	// Required to be set before calling init_tensorflow
 	// XXX:TODO: poss should be formal params - PAA
@@ -35,7 +35,7 @@ typedef struct {
 	void (*oninfer)(void *);
 	void (*onmask)(void *);
 	void *caller_ctx;
-	// Used by libdeepseg / callbacks (eg: adjusting blur size)
+	// Used by libbackscrub / callbacks (eg: adjusting blur size)
 	// XXX:TODO: probably too much coupling - PAA
 	cv::Mat input;
 	cv::Mat output;
@@ -46,7 +46,7 @@ typedef struct {
 	cv::Mat ofinal;
 	cv::Size blur;
 	float ratio;
-	void *deepseg_ctx;	// opaque context used by libdeepseg
+	void *backscrub_ctx;	// opaque context used by libbackscrub
 } calcinfo_t;
 
 extern int init_tensorflow(calcinfo_t &info);

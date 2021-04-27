@@ -10,7 +10,7 @@
 #include "tensorflow/lite/optional_debug_tools.h"
 
 #include "transpose_conv_bias.h"
-#include "libdeepseg.h"
+#include "libbackscrub.h"
 
 // Tensorflow Lite helper functions
 using namespace tflite;
@@ -18,9 +18,9 @@ using namespace tflite;
 typedef struct {
 	std::unique_ptr<tflite::FlatBufferModel> model;
 	std::unique_ptr<Interpreter> interpreter;
-} deepseg_ctx_t;
+} backscrub_ctx_t;
 
-static cv::Mat getTensorMat(deepseg_ctx_t &ctx, int tnum, int debug) {
+static cv::Mat getTensorMat(backscrub_ctx_t &ctx, int tnum, int debug) {
 
 	TfLiteType t_type = ctx.interpreter->tensor(tnum)->type;
 	TFLITE_MINIMAL_CHECK(t_type == kTfLiteFloat32);
@@ -47,9 +47,9 @@ static const size_t pers = std::distance(labels.begin(), std::find(labels.begin(
 
 int init_tensorflow(calcinfo_t &info) {
 	// Allocate context
-	info.deepseg_ctx = new deepseg_ctx_t;
+	info.backscrub_ctx = new backscrub_ctx_t;
 	// Take a reference so we can write tidy code with ctx.<x>
-	deepseg_ctx_t &ctx = *((deepseg_ctx_t *)info.deepseg_ctx);
+	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
 	// Load model
 	ctx.model = tflite::FlatBufferModel::BuildFromFile(info.modelname);
 	TFLITE_MINIMAL_CHECK(ctx.model != nullptr);
@@ -89,8 +89,8 @@ int init_tensorflow(calcinfo_t &info) {
 
 int calc_mask(calcinfo_t &info) {
 	// Ensure we have a context from init_tensorflow()
-	TFLITE_MINIMAL_CHECK(info.deepseg_ctx!=NULL);
-	deepseg_ctx_t &ctx = *((deepseg_ctx_t *)info.deepseg_ctx);
+	TFLITE_MINIMAL_CHECK(info.backscrub_ctx!=NULL);
+	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
 
 	// map ROI
 	cv::Mat roi = info.raw(info.roidim);
