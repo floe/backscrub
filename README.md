@@ -1,4 +1,5 @@
-# DeepBackSub
+# BackScrub
+(or The Project Formerly Known As DeepBackSub)
 
 ## Virtual Video Device for Background Replacement with Deep Semantic Segmentation
 
