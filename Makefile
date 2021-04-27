@@ -1,7 +1,7 @@
 # this is licensed software, @see LICENSE file.
 
 # OpenCV & Tensorflow recommended flags for performance..
-CFLAGS = -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-math-optimizations -Wall -pthread
+CFLAGS = -fPIC -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-math-optimizations -Wall -pthread
 LDFLAGS = -lrt -ldl
 
 # Version
