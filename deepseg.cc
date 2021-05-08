@@ -244,8 +244,8 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 		in_u8_rgb = filtered;
 	}
 
-	// convert to float and normalize values to [-1;1]
-	in_u8_rgb.convertTo(info.input,CV_32FC3,1.0/128.0,-1.0);
+	// convert to float and normalize values to [0;1]
+	in_u8_rgb.convertTo(info.input,CV_32FC3,1.0/255.0);
 	ti.openns=timestamp();
 
 
