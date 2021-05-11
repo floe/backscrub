@@ -317,7 +317,7 @@ int main(int argc, char* argv[]) {
 		cap.set(CV_CAP_PROP_FOURCC, fourcc);
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
-	calcinfo_t calcinfo = { modelname, threads, width, height, debug, onprep, oninfer, onmask, &ti };
+	calcinfo_t calcinfo = { modelname, threads, width, height, debug, nullptr, onprep, oninfer, onmask, &ti };
 	TFLITE_MINIMAL_CHECK(init_tensorflow(calcinfo));
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)

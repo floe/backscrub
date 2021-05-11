@@ -12,21 +12,35 @@
 #include "transpose_conv_bias.h"
 #include "libbackscrub.h"
 
-// Tensorflow Lite helper functions
+// Debug helper
+static void _dbg(calcinfo_t &info, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	if (info.ondebug)
+		info.ondebug(info.caller_ctx, fmt, ap);
+	else
+		vfprintf(stderr, fmt, ap);
+	va_end(ap);
+}
+
 using namespace tflite;
 
+// Tensorflow Lite helper functions
 typedef struct {
 	std::unique_ptr<tflite::FlatBufferModel> model;
 	std::unique_ptr<Interpreter> interpreter;
 } backscrub_ctx_t;
 
-static cv::Mat getTensorMat(backscrub_ctx_t &ctx, int tnum, int debug) {
+static cv::Mat getTensorMat(calcinfo_t &info, int tnum) {
 
+	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
 	TfLiteType t_type = ctx.interpreter->tensor(tnum)->type;
 	TFLITE_MINIMAL_CHECK(t_type == kTfLiteFloat32);
 
 	TfLiteIntArray* dims = ctx.interpreter->tensor(tnum)->dims;
-	if (debug) for (int i = 0; i < dims->size; i++) printf("tensor #%d: %d\n",tnum,dims->data[i]);
+	if (info.debug)
+		for (int i = 0; i < dims->size; i++)
+			_dbg(info,"tensor #%d: %d\n",tnum,dims->data[i]);
 	TFLITE_MINIMAL_CHECK(dims->data[0] == 1);
 
 	int h = dims->data[1];
@@ -46,6 +60,9 @@ static const size_t cnum = labels.size();
 static const size_t pers = std::distance(labels.begin(), std::find(labels.begin(),labels.end(),"person"));
 
 int init_tensorflow(calcinfo_t &info) {
+	// Deallocate if not done already
+	if (info.backscrub_ctx)
+		drop_tensorflow(info);
 	// Allocate context
 	info.backscrub_ctx = new backscrub_ctx_t;
 	// Take a reference so we can write tidy code with ctx.<x>
@@ -70,8 +87,8 @@ int init_tensorflow(calcinfo_t &info) {
 	ctx.interpreter->SetAllowFp16PrecisionForFp32(true);
 
 	// get input and output tensor as cv::Mat
-	info.input = getTensorMat(ctx, ctx.interpreter->inputs ()[0],info.debug);
-	info.output = getTensorMat(ctx, ctx.interpreter->outputs()[0],info.debug);
+	info.input = getTensorMat(info, ctx.interpreter->inputs ()[0]);
+	info.output = getTensorMat(info, ctx.interpreter->outputs()[0]);
 	info.ratio = (float)info.input.cols/(float) info.input.rows;
 
 	// initialize mask and square ROI in center
@@ -85,6 +102,27 @@ int init_tensorflow(calcinfo_t &info) {
 	// create Mat for small mask
 	info.ofinal = cv::Mat(info.output.rows,info.output.cols,CV_8UC1);
 	return 1;
+}
+
+void drop_tensorflow(calcinfo_t &info) {
+	if (info.debug)
+		_dbg(info, "dropping tensorflow context\n");
+	// clear all mask data
+	info.ofinal.deallocate();
+	info.mask.deallocate();
+	info.input.deallocate();
+	info.output.deallocate();
+	// clear internal context if present
+	if (info.backscrub_ctx) {
+		backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
+		// drop interpreter
+		ctx.interpreter.reset();
+		// drop model
+		ctx.model.reset();
+		// drop context
+		delete &ctx;
+		info.backscrub_ctx = nullptr;
+	}
 }
 
 int calc_mask(calcinfo_t &info) {
