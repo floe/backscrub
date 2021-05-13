@@ -148,8 +148,23 @@ typedef struct {
 	pthread_mutex_t lock;
 } capinfo_t;
 
+enum class modeltype_t {
+	Unknown,
+	BodyPix,
+	DeepLab,
+	GoogleMeetSegmentation,
+	MLKitSelfie,
+};
+
+struct normalization_t {
+	float scaling;
+	float offset;
+};
+
 typedef struct {
 	const char *modelname;
+	modeltype_t modeltype;
+	normalization_t norm;
 	size_t threads;
 	size_t width;
 	size_t height;
@@ -188,6 +203,36 @@ void *grab_thread(void *arg) {
 		pthread_mutex_unlock(&ci->lock);
 	}
 	return NULL;
+}
+
+modeltype_t get_modeltype(const char* modelname) {
+	if (strstr(modelname, "body-pix")) {
+		return modeltype_t::BodyPix;
+	}
+	else if (strstr(modelname, "deeplab")) {
+		return modeltype_t::DeepLab;
+	}
+	else if (strstr(modelname, "segm_")) {
+		return modeltype_t::GoogleMeetSegmentation;
+	}
+	else if (strstr(modelname, "selfie")) {
+		return modeltype_t::MLKitSelfie;
+	}
+	return modeltype_t::Unknown;
+}
+
+normalization_t get_normalization(modeltype_t type) {
+	// TODO: This should be read out from actual mode metadata instead
+	switch (type) {
+		case modeltype_t::DeepLab:
+			return normalization_t{.scaling = 1/127.5, .offset = -1};
+		case modeltype_t::BodyPix:
+		case modeltype_t::GoogleMeetSegmentation:
+		case modeltype_t::MLKitSelfie:
+		case modeltype_t::Unknown:
+		default:
+			return normalization_t{.scaling = 1/255.0, .offset = 0};
+	}
 }
 
 void init_tensorflow(calcinfo_t &info) {
@@ -244,10 +289,9 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 		in_u8_rgb = filtered;
 	}
 
-	// convert to float and normalize values to [0;1]
-	in_u8_rgb.convertTo(info.input,CV_32FC3,1.0/255.0);
+	// convert to float and normalize to values expected by model
+	in_u8_rgb.convertTo(info.input,CV_32FC3,info.norm.scaling,info.norm.offset);
 	ti.openns=timestamp();
-
 
 	// Run inference
 	TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
@@ -256,47 +300,50 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 	float* tmp = (float*)info.output.data;
 	uint8_t* out = (uint8_t*)info.ofinal.data;
 
-	// find class with maximum probability
-	if (strstr(info.modelname,"deeplab")) {
-		for (unsigned int n = 0; n < info.output.total(); n++) {
-			float maxval = -10000; size_t maxpos = 0;
-			for (size_t i = 0; i < cnum; i++) {
-				if (tmp[n*cnum+i] > maxval) {
-					maxval = tmp[n*cnum+i];
-					maxpos = i;
+	switch (info.modeltype) {
+		case modeltype_t::DeepLab:
+			// find class with maximum probability
+			for (unsigned int n = 0; n < info.output.total(); n++) {
+				float maxval = -10000; size_t maxpos = 0;
+				for (size_t i = 0; i < cnum; i++) {
+					if (tmp[n*cnum+i] > maxval) {
+						maxval = tmp[n*cnum+i];
+						maxpos = i;
+					}
 				}
+				// set mask to 0 where class == person
+				uint8_t val = (maxpos==pers ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
 			}
-			// set mask to 0 where class == person
-			uint8_t val = (maxpos==pers ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
-	}
-
-	// threshold probability
-	if (strstr(info.modelname,"body-pix") || strstr(info.modelname,"selfie")) {
-		for (unsigned int n = 0; n < info.output.total(); n++) {
-			// FIXME: hardcoded threshold
-			uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
-	}
-
-	// Google Meet segmentation network
-	if (strstr(info.modelname,"segm_")) {
-		/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
-		 * tensor for the light model with masks for background
-		 * (channel 0) and person (channel 1) where values are in
-		 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
-		 * softmax across both channels to yield foreground
-		 * probability in [0.0, 1.0]. */
-		for (unsigned int n = 0; n < info.output.total(); n++) {
-			float exp0 = expf(tmp[2*n  ]);
-			float exp1 = expf(tmp[2*n+1]);
-			float p0 = exp0 / (exp0+exp1);
-			float p1 = exp1 / (exp0+exp1);
-			uint8_t val = (p0 < p1 ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
+			break;
+		case modeltype_t::BodyPix:
+		case modeltype_t::MLKitSelfie:
+			// threshold probability
+			for (unsigned int n = 0; n < info.output.total(); n++) {
+				// FIXME: hardcoded threshold
+				uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
+			}
+			break;
+		case modeltype_t::GoogleMeetSegmentation:
+			/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
+			 * tensor for the light model with masks for background
+			 * (channel 0) and person (channel 1) where values are in
+			 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
+			 * softmax across both channels to yield foreground
+			 * probability in [0.0, 1.0]. */
+			for (unsigned int n = 0; n < info.output.total(); n++) {
+				float exp0 = expf(tmp[2*n  ]);
+				float exp1 = expf(tmp[2*n+1]);
+				float p0 = exp0 / (exp0+exp1);
+				float p1 = exp1 / (exp0+exp1);
+				uint8_t val = (p0 < p1 ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
+			}
+			break;
+		case modeltype_t::Unknown:
+			fprintf(stderr, "Unknown model type\n");
+			break;
 	}
 	ti.maskns=timestamp();
 
@@ -463,7 +510,13 @@ int main(int argc, char* argv[]) {
 		cap.set(CV_CAP_PROP_FOURCC, fourcc);
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
-	calcinfo_t calcinfo = { modelname, threads, width, height, debug };
+	auto modeltype = get_modeltype(modelname);
+	auto norm = get_normalization(modeltype);
+	if (modeltype_t::Unknown == modeltype) {
+		fprintf(stderr, "Unknown model type '%s'.\n", modelname);
+		exit(1);
+	}
+	calcinfo_t calcinfo = { modelname, modeltype, norm, threads, width, height, debug };
 	init_tensorflow(calcinfo);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
