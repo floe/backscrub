@@ -1,12 +1,24 @@
+# this is licensed software, @see LICENSE file.
+
+# OpenCV & Tensorflow recommended flags for performance..
 CFLAGS = -Ofast -march=native -fno-trapping-math -fassociative-math -funsafe-math-optimizations -Wall -pthread
 LDFLAGS = -lrt -ldl
 
+# Version
+VERSION=$(shell git describe --all --long --always --dirty)
+# default if outside a git repo..
+ifeq ($(VERSION),)
+	VERSION=v0.2.0-no-git
+endif
+
+CFLAGS += -D DEEPSEG_VERSION=$(VERSION)
+
 # TensorFlow
-TFBASE=tensorflow/
-TFLITE=$(TFBASE)/tensorflow/lite/tools/make/
-TFLIBS=$(TFLITE)/gen/linux_x86_64/lib/
-CFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include -ggdb
-LDFLAGS += -L $(TFLIBS) -ltensorflow-lite -ldl
+TFBASE=tensorflow
+TFLITE=$(TFBASE)/tensorflow/lite/tools/make
+TFLIBS=$(TFLITE)/gen/linux_x86_64/lib
+TFCFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include -ggdb
+TFLDFLAGS += -L $(TFLIBS) -ltensorflow-lite -ldl
 
 # OpenCV
 ifeq ($(shell pkg-config --exists opencv; echo $$?), 0)
@@ -19,8 +31,21 @@ else
     $(error Couldn\'t find OpenCV)
 endif
 
-deepseg: $(TFLIBS)/libtensorflow-lite.a deepseg.cc loopback.cc transpose_conv_bias.cc
-	g++ $^ ${CFLAGS} ${LDFLAGS} -o $@
+# Output folder
+BIN=bin
+
+# Default target
+all: $(BIN) $(BIN)/deepseg
+
+clean:
+	-rm -rf $(BIN)
+
+$(BIN):
+	-mkdir -p $(BIN)
+
+# Primary binary - special deps
+$(BIN)/deepseg: $(TFLIBS)/libtensorflow-lite.a deepseg.cc loopback.cc transpose_conv_bias.cc
+	g++ $^ ${CFLAGS} ${TFCFLAGS} ${LDFLAGS} ${TFLDFLAGS} -o $@
 
 $(TFLIBS)/libtensorflow-lite.a: $(TFLITE)
 	cd $(TFLITE) && ./download_dependencies.sh && ./build_lib.sh
@@ -28,10 +53,12 @@ $(TFLIBS)/libtensorflow-lite.a: $(TFLITE)
 $(TFLITE):
 	git submodule update --init --recursive
 
-all: deepseg
+# Single file test progs - OpenCV deps only
+$(BIN)/%: %.cc $(BIN)
+	g++ -o $@ $(CFLAGS) $< $(LDFLAGS)
 
-clean:
-	-rm deepseg
+$(BIN)/%: %.cpp $(BIN)
+	g++ -o $@ $(CFLAGS) $< $(LDFLAGS)
 
-tv: transparent_viewer.c
-	g++ -o $@ $^ -lX11 -lGL $(CFLAGS) $(LDFLAGS)
+$(BIN)/%: %.c $(BIN)
+	g++ -o $@ $(CFLAGS) $< $(LDFLAGS)

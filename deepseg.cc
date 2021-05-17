@@ -1,26 +1,21 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+/* This is licenced software, @see LICENSE file.
+ * Authors - @see AUTHORS file.
 ==============================================================================*/
 
-// tested against tensorflow lite v2.1.0 (static library)
+// tested against tensorflow lite v2.4.1 (static library)
 
 #include <unistd.h>
 #include <cstdio>
 #include <chrono>
 #include <string>
+#include <thread>
+#include <mutex>
 
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/optional_debug_tools.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -30,6 +25,11 @@ limitations under the License.
 
 #include "loopback.h"
 #include "transpose_conv_bias.h"
+
+// Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
+// http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).
+#define __STR(X) #X
+#define _STR(X) __STR(X)
 
 int fourCcFromString(const std::string& in)
 {
@@ -77,6 +77,34 @@ cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
 	return yuyv;
 }
 
+cv::Mat alpha_blend(cv::Mat srca, cv::Mat srcb, cv::Mat mask) {
+	// alpha blend two (8UC3) source images using a mask (8UC1, 255=>srca, 0=>srcb), adapted from:
+	// https://www.learnopencv.com/alpha-blending-using-opencv-cpp-python/
+	// "trust no-one" => we're about to mess with data pointers
+	assert(srca.rows==srcb.rows);
+	assert(srca.cols==srcb.cols);
+	assert(mask.rows==srca.rows);
+	assert(mask.cols==srca.cols);
+	assert(srca.type()==CV_8UC3);
+	assert(srcb.type()==CV_8UC3);
+	assert(mask.type()==CV_8UC1);
+	cv::Mat out = cv::Mat::zeros(srca.size(), srca.type());
+	uint8_t *optr = (uint8_t*)out.data;
+	uint8_t *aptr = (uint8_t*)srca.data;
+	uint8_t *bptr = (uint8_t*)srcb.data;
+	uint8_t *mptr = (uint8_t*)mask.data;
+	int npix = srca.rows * srca.cols;
+	for (int pix=0; pix<npix; ++pix) {
+		// blending weights
+		int aw=(int)(*mptr++), bw=255-aw;
+		// blend each channel byte
+		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
+		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
+		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
+	}
+	return out;
+}
+
 // Tensorflow Lite helper functions
 using namespace tflite;
 
@@ -121,7 +149,7 @@ typedef struct {
 	timestamp_t waitns;
 	timestamp_t lockns;
 	timestamp_t copyns;
-	timestamp_t openns;
+	timestamp_t prepns;
 	timestamp_t tfltns;
 	timestamp_t maskns;
 	timestamp_t postns;
@@ -145,7 +173,7 @@ typedef struct {
 	cv::Mat *raw;
 	int64 cnt;
 	timinginfo_t *pti;
-	pthread_mutex_t lock;
+	std::mutex lock;
 } capinfo_t;
 
 typedef struct {
@@ -162,32 +190,31 @@ typedef struct {
 	cv::Mat mroi;
 	cv::Mat raw;
 	cv::Mat ofinal;
-	cv::Mat element;
+	cv::Size blur;
 	float ratio;
 } calcinfo_t;
 
 // capture thread function
-void *grab_thread(void *arg) {
-	capinfo_t *ci = (capinfo_t *)arg;
+void grab_thread(capinfo_t *ci) {
 	bool done = false;
 	// while we have a grab frame.. grab frames
 	while (!done) {
 		timestamp_t ts = timestamp();
 		ci->cap->grab();
 		long ns = diffnanosecs(timestamp(),ts);
-		pthread_mutex_lock(&ci->lock);
-		ci->pti->grabns = ns;
-		if (ci->grab!=NULL) {
-			ts = timestamp();
-			ci->cap->retrieve(*ci->grab);
-			ci->pti->retrns = diffnanosecs(timestamp(),ts);
-		} else {
-			done = true;
+		{
+			std::lock_guard<std::mutex> hold(ci->lock);
+			ci->pti->grabns = ns;
+			if (ci->grab!=NULL) {
+				ts = timestamp();
+				ci->cap->retrieve(*ci->grab);
+				ci->pti->retrns = diffnanosecs(timestamp(),ts);
+			} else {
+				done = true;
+			}
+			ci->cnt++;
 		}
-		ci->cnt++;
-		pthread_mutex_unlock(&ci->lock);
 	}
-	return NULL;
 }
 
 void init_tensorflow(calcinfo_t &info) {
@@ -203,8 +230,17 @@ void init_tensorflow(calcinfo_t &info) {
 	builder(&interpreter);
 	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
 
-	// Allocate tensor buffers.
-	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
+	// Wanna try GPU?
+	if (getenv("BACKSCRUB_GPU")!=nullptr) {
+		// https://github.com/tensorflow/tensorflow/tree/v2.4.1/tensorflow/lite/delegates/gpu
+		TfLiteGpuDelegateOptionsV2 opts = {0};
+		opts.is_precision_loss_allowed = 1;
+		auto *gpu_delegate = TfLiteGpuDelegateV2Create(&opts);
+		TFLITE_MINIMAL_CHECK(interpreter->ModifyGraphWithDelegate(gpu_delegate) == kTfLiteOk);
+	} else {
+		// Allocate tensor buffers.
+		TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
+	}
 
 	// set interpreter params
 	interpreter->SetNumThreads(info.threads);
@@ -217,11 +253,11 @@ void init_tensorflow(calcinfo_t &info) {
 
 	// initialize mask and square ROI in center
 	info.roidim = cv::Rect((info.width-info.height/info.ratio)/2,0,info.height/info.ratio,info.height);
-	info.mask = cv::Mat::ones(info.height,info.width,CV_8UC1);
+	info.mask = cv::Mat::ones(info.height,info.width,CV_8UC1)*255;
 	info.mroi = info.mask(info.roidim);
 
-	// erosion/dilation element
-	info.element = cv::getStructuringElement( cv::MORPH_RECT, cv::Size(5,5) );
+	// mask blurring size
+	info.blur = cv::Size(5,5);
 
 	// create Mat for small mask
 	info.ofinal = cv::Mat(info.output.rows,info.output.cols,CV_8UC1);
@@ -246,7 +282,7 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 
 	// convert to float and normalize values to [-1;1]
 	in_u8_rgb.convertTo(info.input,CV_32FC3,1.0/128.0,-1.0);
-	ti.openns=timestamp();
+	ti.prepns=timestamp();
 
 
 	// Run inference
@@ -300,19 +336,18 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 	}
 	ti.maskns=timestamp();
 
-	// denoise
-	cv::Mat tmpbuf;
-	cv::dilate(info.ofinal,tmpbuf,info.element);
-	cv::erode(tmpbuf,info.ofinal,info.element);
-
 	// scale up into full-sized mask
-	cv::resize(info.ofinal,info.mroi,cv::Size(info.raw.rows/info.ratio,info.raw.rows));
+	cv::Mat tmpbuf;
+	cv::resize(info.ofinal,tmpbuf,cv::Size(info.raw.rows/info.ratio,info.raw.rows));
+
+	// blur at full size for maximum smoothness
+	cv::blur(tmpbuf,info.mroi,info.blur);
 }
 
 int main(int argc, char* argv[]) {
 
-	printf("deepseg v0.2.0\n");
-	printf("(c) 2021 by floe@butterbrot.org\n");
+	printf("deepseg version %s\n", _STR(DEEPSEG_VERSION));
+	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
 	printf("https://github.com/floe/deepbacksub\n");
 	timinginfo_t ti;
 	ti.bootns = timestamp();
@@ -467,15 +502,11 @@ int main(int argc, char* argv[]) {
 	init_tensorflow(calcinfo);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
-	pthread_t grabber;
 	cv::Mat buf1;
 	cv::Mat buf2;
 	int64 oldcnt = 0;
-	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, &ti, PTHREAD_MUTEX_INITIALIZER };
-	if (pthread_create(&grabber, NULL, grab_thread, &capinfo)) {
-		perror("creating grabber thread");
-		exit(1);
-	}
+	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, &ti };
+	std::thread grabber(grab_thread, &capinfo);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -486,16 +517,16 @@ int main(int argc, char* argv[]) {
 		// wait for next frame
 		while (capinfo.cnt == oldcnt) usleep(10000);
 		oldcnt = capinfo.cnt;
-		int e1 = cv::getTickCount();
 		ti.waitns=timestamp();
 
 		// switch buffer pointers in capture thread
-		pthread_mutex_lock(&capinfo.lock);
-		ti.lockns=timestamp();
-		cv::Mat *tmat = capinfo.grab;
-		capinfo.grab = capinfo.raw;
-		capinfo.raw = tmat;
-		pthread_mutex_unlock(&capinfo.lock);
+		{
+			std::lock_guard<std::mutex> hold(capinfo.lock);
+			ti.lockns=timestamp();
+			cv::Mat *tmat = capinfo.grab;
+			capinfo.grab = capinfo.raw;
+			capinfo.raw = tmat;
+		}
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
 		calcinfo.raw = *capinfo.raw;
 		ti.copyns=timestamp();
@@ -505,9 +536,12 @@ int main(int argc, char* argv[]) {
 			// do background detection magic
 			calc_mask(calcinfo, ti);
 
-			// copy background over raw cam image using mask
-			bg.copyTo(calcinfo.raw,calcinfo.mask);
-		} // filterActive
+			// alpha blend background over foreground using mask
+			calcinfo.raw = alpha_blend(bg, calcinfo.raw, calcinfo.mask);
+		} else {
+			// fix up timing values
+			ti.maskns=ti.tfltns=ti.prepns=ti.copyns;
+		}
 
 		if (flipHorizontal && flipVertical) {
 			cv::flip(calcinfo.raw,calcinfo.raw,-1);
@@ -537,28 +571,25 @@ int main(int argc, char* argv[]) {
 		}
 
 		// timing details..
-		printf("wait:%9ld lock:%9ld [grab:%9ld retr:%9ld] copy:%9ld open:%9ld tflt:%9ld mask:%9ld post:%9ld v4l2:%9ld ",
+		printf("wait:%9ld lock:%9ld [grab:%9ld retr:%9ld] copy:%9ld prep:%9ld tflt:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f\e[K\r",
 			diffnanosecs(ti.waitns,ti.lastns),
 			diffnanosecs(ti.lockns,ti.waitns),
 			ti.grabns,
 			ti.retrns,
 			diffnanosecs(ti.copyns,ti.lockns),
-			diffnanosecs(ti.openns,ti.copyns),
-			diffnanosecs(ti.tfltns,ti.openns),
+			diffnanosecs(ti.prepns,ti.copyns),
+			diffnanosecs(ti.tfltns,ti.prepns),
 			diffnanosecs(ti.maskns,ti.tfltns),
 			diffnanosecs(ti.postns,ti.maskns),
-			diffnanosecs(ti.v4l2ns,ti.postns));
-
-		int e2 = cv::getTickCount();
-		float t = (e2-e1)/cv::getTickFrequency();
-		printf("FPS: %5.2f\e[K\r",1.0/t);
+			diffnanosecs(ti.v4l2ns,ti.postns),
+			1e9/diffnanosecs(ti.v4l2ns,ti.lastns));
 		fflush(stdout);
 		ti.lastns = timestamp();
 		if (debug < 2) continue;
 
 		cv::Mat test;
 		cv::cvtColor(calcinfo.raw,test,CV_YUV2BGR_YUYV);
-		cv::imshow("output.png",test);
+		cv::imshow("DeepSeg " _STR(DEEPSEG_VERSION),test);
 
 		auto keyPress = cv::waitKey(1);
 		switch(keyPress) {
@@ -577,9 +608,11 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	pthread_mutex_lock(&capinfo.lock);
-	capinfo.grab = NULL;
-	pthread_mutex_unlock(&capinfo.lock);
+	{
+		std::lock_guard<std::mutex> hold(capinfo.lock);
+		capinfo.grab = NULL;
+	}
+	grabber.join();
 
 	printf("\n");
 	return 0;
