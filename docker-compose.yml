@@ -1,0 +1,34 @@
+version: '3'
+services:
+    backscrub:
+        image: backscrub
+        build:
+            context: .
+        command: <|
+            -c /dev/video4
+            -v /dev/video10
+            -b images/star-wars-backgrounds-01.jpg
+            -f 56595559
+            -m models/selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite
+            -w 1280 -h 720
+            -t 1
+        volumes:
+            - ./models:/src/models
+            - ./images:/src/images
+            - /tmp/.X11-unix:/tmp/.X11-unix
+        ulimits:
+            memlock: -1
+            stack: 67108864
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - capabilities:
+                              - gpu
+        network_mode: host
+        environment:
+            DISPLAY: $DISPLAY
+        devices:
+            - /dev/video4
+            - /dev/video10
+            - /dev/nvidia0
