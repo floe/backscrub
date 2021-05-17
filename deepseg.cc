@@ -15,6 +15,7 @@
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/optional_debug_tools.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -229,8 +230,17 @@ void init_tensorflow(calcinfo_t &info) {
 	builder(&interpreter);
 	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
 
-	// Allocate tensor buffers.
-	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
+	// Wanna try GPU?
+	if (getenv("BACKSCRUB_GPU")!=nullptr) {
+		// https://github.com/tensorflow/tensorflow/tree/v2.4.1/tensorflow/lite/delegates/gpu
+		TfLiteGpuDelegateOptionsV2 opts = {0};
+		opts.is_precision_loss_allowed = 1;
+		auto *gpu_delegate = TfLiteGpuDelegateV2Create(&opts);
+		TFLITE_MINIMAL_CHECK(interpreter->ModifyGraphWithDelegate(gpu_delegate) == kTfLiteOk);
+	} else {
+		// Allocate tensor buffers.
+		TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
+	}
 
 	// set interpreter params
 	interpreter->SetNumThreads(info.threads);
