@@ -276,7 +276,7 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 	if (strstr(info.modelname,"body-pix") || strstr(info.modelname,"selfie")) {
 		for (unsigned int n = 0; n < info.output.total(); n++) {
 			// FIXME: hardcoded threshold
-			uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+			uint8_t val = (tmp[n] > 0.50 ? 0 : 255);
 			out[n] = (val & 0xE0) | (out[n] >> 3);
 		}
 	}
