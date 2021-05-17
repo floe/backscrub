@@ -217,7 +217,7 @@ void grab_thread(capinfo_t *ci) {
 	}
 }
 
-void init_tensorflow(calcinfo_t &info) {
+void init_tensorflow(calcinfo_t &info, bool &useGPU) {
 	// Load model
 	info.model = tflite::FlatBufferModel::BuildFromFile(info.modelname);
 	TFLITE_MINIMAL_CHECK(info.model != nullptr);
@@ -231,7 +231,7 @@ void init_tensorflow(calcinfo_t &info) {
 	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
 
 	// Wanna try GPU?
-	if (getenv("BACKSCRUB_GPU")!=nullptr) {
+	if (useGPU) {
 		// https://github.com/tensorflow/tensorflow/tree/v2.4.1/tensorflow/lite/delegates/gpu
 		TfLiteGpuDelegateOptionsV2 opts = {0};
 		opts.is_precision_loss_allowed = 1;
@@ -263,7 +263,7 @@ void init_tensorflow(calcinfo_t &info) {
 	info.ofinal = cv::Mat(info.output.rows,info.output.cols,CV_8UC1);
 }
 
-void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
+void calc_mask(calcinfo_t &info, timinginfo_t &ti, float &threshold_probability) {
 	// map ROI
 	cv::Mat roi = info.raw(info.roidim);
 
@@ -309,16 +309,15 @@ void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
 	}
 
 	// threshold probability
-	if (strstr(info.modelname,"body-pix") || strstr(info.modelname,"selfie")) {
+	else if (strstr(info.modelname,"body-pix") || strstr(info.modelname,"selfie")) {
 		for (unsigned int n = 0; n < info.output.total(); n++) {
-			// FIXME: hardcoded threshold
-			uint8_t val = (tmp[n] > 0.50 ? 0 : 255);
+			uint8_t val = (tmp[n] > threshold_probability ? 0 : 255);
 			out[n] = (val & 0xE0) | (out[n] >> 3);
 		}
 	}
 
 	// Google Meet segmentation network
-	if (strstr(info.modelname,"segm_")) {
+	else if (strstr(info.modelname,"segm_")) {
 		/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
 		 * tensor for the light model with masks for background
 		 * (channel 0) and person (channel 1) where values are in
@@ -356,12 +355,15 @@ int main(int argc, char* argv[]) {
 	size_t threads= 2;
 	size_t width  = 640;
 	size_t height = 480;
+	size_t fps = 10;
 	const char *back = nullptr; // "images/background.png";
 	const char *vcam = "/dev/video0";
 	const char *ccam = "/dev/video1";
 	bool flipHorizontal = false;
 	bool flipVertical   = false;
+	bool useGPU   = false;
 	int fourcc = 0;
+	float threshold_probability = 0.65;
 
 	const char* modelname = "models/segm_full_v679.tflite";
 
@@ -378,6 +380,8 @@ int main(int argc, char* argv[]) {
 			flipHorizontal = !flipHorizontal;
 		} else if (strncmp(argv[arg], "-V", 2)==0) {
 			flipVertical = !flipVertical;
+		} else if (strncmp(argv[arg], "-G", 2)==0) {
+			useGPU = !useGPU;
 		} else if (strncmp(argv[arg], "-v", 2)==0) {
 			if (hasArgument) {
 				vcam = argv[++arg];
@@ -393,6 +397,14 @@ int main(int argc, char* argv[]) {
 		} else if (strncmp(argv[arg], "-b", 2)==0) {
 			if (hasArgument) {
 				back = argv[++arg];
+			} else {
+				showUsage = true;
+			}
+		} else if (strncmp(argv[arg], "-T", 2)==0) {
+			if (hasArgument && sscanf(argv[++arg], "%f", &threshold_probability)) {
+				if (!threshold_probability) {
+					showUsage = true;
+				}
 			} else {
 				showUsage = true;
 			}
@@ -413,6 +425,14 @@ int main(int argc, char* argv[]) {
 		} else if (strncmp(argv[arg], "-h", 2)==0) {
 			if (hasArgument && sscanf(argv[++arg], "%zu", &height)) {
 				if (!height) {
+					showUsage = true;
+				}
+			} else {
+				showUsage = true;
+			}
+		} else if (strncmp(argv[arg], "-s", 2)==0) {
+			if (hasArgument && sscanf(argv[++arg], "%zu", &fps)) {
+				if (!fps) {
 					showUsage = true;
 				}
 			} else {
@@ -441,8 +461,8 @@ int main(int argc, char* argv[]) {
 	if (showUsage) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "usage:\n");
-		fprintf(stderr, "  deepseg [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
-		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>]\n");
+		fprintf(stderr, "  deepseg [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>] [s <fps>]\n");
+		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>] [-V] [-H] [-G] [-T <threshold_probability>]\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "-?            Display this usage information\n");
 		fprintf(stderr, "-d            Increase debug level\n");
@@ -451,12 +471,15 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "-v            Specify the video target (sink) device\n");
 		fprintf(stderr, "-w            Specify the video stream width\n");
 		fprintf(stderr, "-h            Specify the video stream height\n");
+		fprintf(stderr, "-s            Specify the video stream fps\n");
 		fprintf(stderr, "-f            Specify the camera video format, i.e. MJPG or 47504A4D.\n");
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
 		fprintf(stderr, "-b            Specify the background image\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
 		fprintf(stderr, "-H            Mirror the output horizontally\n");
 		fprintf(stderr, "-V            Mirror the output vertically\n");
+		fprintf(stderr, "-G            Use GPU acceleration\n");
+		fprintf(stderr, "-T            Threshold probability (default: 0.65)\n");
 		exit(1);
 	}
 
@@ -465,11 +488,14 @@ int main(int argc, char* argv[]) {
 	printf("vcam:   %s\n", vcam);
 	printf("width:  %zu\n", width);
 	printf("height: %zu\n", height);
+	printf("fps:    %zu\n", fps);
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
+	printf("GPU:    %s\n", useGPU ? "yes" : "no");
 	printf("threads:%zu\n", threads);
 	printf("back:   %s\n", back ? back : "(none)");
-	printf("model:  %s\n\n", modelname);
+	printf("model:  %s\n", modelname);
+	printf("threshold_probability:  %f\n\n", threshold_probability);
 
 	cv::Mat bg;
 	if (back) {
@@ -494,12 +520,13 @@ int main(int argc, char* argv[]) {
 
 	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+	cap.set(CV_CAP_PROP_FPS, fps);
 	if (fourcc)
 		cap.set(CV_CAP_PROP_FOURCC, fourcc);
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
 	calcinfo_t calcinfo = { modelname, threads, width, height, debug };
-	init_tensorflow(calcinfo);
+	init_tensorflow(calcinfo, useGPU);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
 	cv::Mat buf1;
@@ -534,7 +561,7 @@ int main(int argc, char* argv[]) {
 
 		if (filterActive) {
 			// do background detection magic
-			calc_mask(calcinfo, ti);
+			calc_mask(calcinfo, ti, threshold_probability);
 
 			// alpha blend background over foreground using mask
 			calcinfo.raw = alpha_blend(bg, calcinfo.raw, calcinfo.mask);
