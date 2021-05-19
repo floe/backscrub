@@ -33,11 +33,11 @@ Works okay-ish, but obviously only detects the face, and not the rest of the per
 
 I've heard good things about this deep learning stuff, so let's try that. I first had to find my way through a pile of frameworks (Keras, Tensorflow, PyTorch, etc.), but after I found a ready-made model for semantic segmentation based on Tensorflow Lite ([DeepLab v3+](https://tfhub.dev/tensorflow/lite-model/deeplabv3/1/default/1)), I settled on that.
 
-I had a look at the corresponding [Python example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/examples/python/label_image.py), [C++ example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/examples/label_image), and [Android example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android), and based on those, I first cobbled together a [Python demo](https://github.com/floe/deepbacksub/blob/master/deepseg.py). That was running at about 2.5 FPS, which is really excruciatingly slow, so I built a [C++ version](https://github.com/floe/deepbacksub/blob/master/deepseg.cc) which manages 10 FPS without too much hand optimization. Good enough.
+I had a look at the corresponding [Python example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/examples/python/label_image.py), [C++ example](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/examples/label_image), and [Android example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android), and based on those, I first cobbled together a [Python demo](https://github.com/floe/backscrub/blob/master/deepseg.py). That was running at about 2.5 FPS, which is really excruciatingly slow, so I built a [C++ version](https://github.com/floe/backscrub/blob/master/deepseg.cc) which manages 10 FPS without too much hand optimization. Good enough.
 
 I've also tested a TFLite-converted version of the [Body-Pix model](https://blog.tensorflow.org/2019/11/updated-bodypix-2.html), but the results haven't been much different to DeepLab for this use case.
 
-More recently, Google has released a model specifically trained for [person segmentation that's used in Google Meet](https://ai.googleblog.com/2020/10/background-features-in-google-meet.html). This has way better performance than DeepLab, both in terms of speed and of accuracy, so this is now the default. It needs one custom op from the MediaPipe framework, but that was quite easy to integrate. Thanks to @jiangjianping for pointing this out in the [corresponding issue](https://github.com/floe/deepbacksub/issues/28).
+More recently, Google has released a model specifically trained for [person segmentation that's used in Google Meet](https://ai.googleblog.com/2020/10/background-features-in-google-meet.html). This has way better performance than DeepLab, both in terms of speed and of accuracy, so this is now the default. It needs one custom op from the MediaPipe framework, but that was quite easy to integrate. Thanks to @jiangjianping for pointing this out in the [corresponding issue](https://github.com/floe/backscrub/issues/28).
 
 ## Replace Background
 
@@ -112,13 +112,18 @@ Tested with the following software:
 
 Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms curl`).
 
+Clone this repository with `git clone --recursive https://github.com/floe/backscrub.git`.
+To speed up the checkout you can additionally pass `--depth=1` to `git clone`.
+This is okay, if you only want to download and build the code, however, for development it is not recommended.
+
 Run `make` to build everything (should also clone and build Tensorflow Lite).
+Alternatively, you can also use `cmake`. Create a subfolder (e.g. `build`), change to that folder and run: `cmake && make -j4` (please replace "4" with the number of your cores).
 
 If the first part doesn't work:
   - Clone https://github.com/tensorflow/tensorflow/ repo into `tensorflow/` folder
   - Checkout tag v2.4.0
-  - run ./tensorflow/lite/tools/make/download_dependencies.sh
-  - run ./tensorflow/lite/tools/make/build_lib.sh
+  - run ./tensorflow/lite/tools/make/download_dependencies.sh (only for non-cmake build)
+  - run ./tensorflow/lite/tools/make/build_lib.sh (only for non-cmake build)
 
 ## Usage
 
