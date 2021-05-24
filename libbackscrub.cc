@@ -199,8 +199,8 @@ int calc_mask(calcinfo_t &info) {
 		in_u8_rgb = filtered;
 	}
 
-	// convert to float and normalize values to [-1;1]
-	in_u8_rgb.convertTo(info.input,CV_32FC3,1.0/128.0,-1.0);
+	// convert to float and normalize values expected by the model
+	in_u8_rgb.convertTo(info.input,CV_32FC3,ctx.norm.scaling,ctx.norm.offset);
 	if (info.onprep)
 		info.onprep(info.caller_ctx);
 
