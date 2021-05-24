@@ -17,11 +17,6 @@
 	exit(1);                                                 \
   }
 
-// Ensure we are usable by plain C programs or ffi language bindings
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 // Shared state structure between caller and libbackscrub
 // backscrub_ctx MUST be zero'ed by caller before first use.
 typedef struct {
@@ -55,10 +50,5 @@ typedef struct {
 extern int init_tensorflow(calcinfo_t &info);
 extern void drop_tensorflow(calcinfo_t &info);
 extern int calc_mask(calcinfo_t &info);
-
-#ifdef __cplusplus
-}
-#endif
-
 
 #endif

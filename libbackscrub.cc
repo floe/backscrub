@@ -26,10 +26,25 @@ static void _dbg(calcinfo_t &info, const char *fmt, ...) {
 using namespace tflite;
 
 // Tensorflow Lite helper functions
-typedef struct {
+enum class modeltype_t {
+	Unknown,
+	BodyPix,
+	DeepLab,
+	GoogleMeetSegmentation,
+	MLKitSelfie,
+};
+
+struct normalization_t {
+	float scaling;
+	float offset;
+};
+
+struct backscrub_ctx_t {
 	std::unique_ptr<tflite::FlatBufferModel> model;
 	std::unique_ptr<Interpreter> interpreter;
-} backscrub_ctx_t;
+	modeltype_t modeltype;
+	normalization_t norm;
+};
 
 static cv::Mat getTensorMat(calcinfo_t &info, int tnum) {
 
@@ -53,6 +68,38 @@ static cv::Mat getTensorMat(calcinfo_t &info, int tnum) {
 	return cv::Mat(h,w,CV_32FC(c),p_data);
 }
 
+// Determine type of model from the name
+// TODO:XXX: use metadata when available
+static modeltype_t get_modeltype(const char* modelname) {
+	if (strstr(modelname, "body-pix")) {
+		return modeltype_t::BodyPix;
+	}
+	else if (strstr(modelname, "deeplab")) {
+		return modeltype_t::DeepLab;
+	}
+	else if (strstr(modelname, "segm_")) {
+		return modeltype_t::GoogleMeetSegmentation;
+	}
+	else if (strstr(modelname, "selfie")) {
+		return modeltype_t::MLKitSelfie;
+	}
+	return modeltype_t::Unknown;
+}
+
+static normalization_t get_normalization(modeltype_t type) {
+	// TODO: This should be read out from actual mode metadata instead
+	switch (type) {
+		case modeltype_t::DeepLab:
+			return normalization_t{.scaling = 1/127.5, .offset = -1};
+		case modeltype_t::BodyPix:
+		case modeltype_t::GoogleMeetSegmentation:
+		case modeltype_t::MLKitSelfie:
+		case modeltype_t::Unknown:
+		default:
+			return normalization_t{.scaling = 1/255.0, .offset = 0};
+	}
+}
+
 // deeplabv3 classes
 static const std::vector<std::string> labels = { "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "dining table", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv" };
 // label number of "person" for DeepLab v3+ model
@@ -70,7 +117,13 @@ int init_tensorflow(calcinfo_t &info) {
 	// Load model
 	ctx.model = tflite::FlatBufferModel::BuildFromFile(info.modelname);
 	TFLITE_MINIMAL_CHECK(ctx.model != nullptr);
-
+	// Determine model type and normalization values
+	ctx.modeltype = get_modeltype(info.modelname);
+	ctx.norm = get_normalization(ctx.modeltype);
+	if (modeltype_t::Unknown == ctx.modeltype) {
+		_dbg(info, "Unknown model type '%s'.\n", info.modelname);
+		return 0;
+	}
 	// Build the interpreter
 	tflite::ops::builtin::BuiltinOpResolver resolver;
 	// custom op for Google Meet network
@@ -159,48 +212,52 @@ int calc_mask(calcinfo_t &info) {
 	float* tmp = (float*)info.output.data;
 	uint8_t* out = (uint8_t*)info.ofinal.data;
 
-	// find class with maximum probability
-	if (strstr(info.modelname,"deeplab")) {
-		for (unsigned int n = 0; n < info.output.total(); n++) {
-			float maxval = -10000; size_t maxpos = 0;
-			for (size_t i = 0; i < cnum; i++) {
-				if (tmp[n*cnum+i] > maxval) {
-					maxval = tmp[n*cnum+i];
-					maxpos = i;
+	switch (ctx.modeltype) {
+		case modeltype_t::DeepLab:
+			// find class with maximum probability
+			for (unsigned int n = 0; n < info.output.total(); n++) {
+				float maxval = -10000; size_t maxpos = 0;
+				for (size_t i = 0; i < cnum; i++) {
+					if (tmp[n*cnum+i] > maxval) {
+						maxval = tmp[n*cnum+i];
+						maxpos = i;
+					}
 				}
+				// set mask to 0 where class == person
+				uint8_t val = (maxpos==pers ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
 			}
-			// set mask to 0 where class == person
-			uint8_t val = (maxpos==pers ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
+			break;
+		case modeltype_t::BodyPix:
+		case modeltype_t::MLKitSelfie:
+			// threshold probability
+			for (unsigned int n = 0; n < info.output.total(); n++) {
+				// FIXME: hardcoded threshold
+				uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
+			}
+			break;
+		case modeltype_t::GoogleMeetSegmentation:
+			/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
+			 * tensor for the light model with masks for background
+			 * (channel 0) and person (channel 1) where values are in
+			 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
+			 * softmax across both channels to yield foreground
+			 * probability in [0.0, 1.0]. */
+			for (unsigned int n = 0; n < info.output.total(); n++) {
+				float exp0 = expf(tmp[2*n  ]);
+				float exp1 = expf(tmp[2*n+1]);
+				float p0 = exp0 / (exp0+exp1);
+				float p1 = exp1 / (exp0+exp1);
+				uint8_t val = (p0 < p1 ? 0 : 255);
+				out[n] = (val & 0xE0) | (out[n] >> 3);
+			}
+			break;
+		case modeltype_t::Unknown:
+			fprintf(stderr, "Unknown model type\n");
+			break;
 	}
 
-	// threshold probability
-	if (strstr(info.modelname,"body-pix") || strstr(info.modelname,"selfie")) {
-		for (unsigned int n = 0; n < info.output.total(); n++) {
-			// FIXME: hardcoded threshold
-			uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
-	}
-
-	// Google Meet segmentation network
-	if (strstr(info.modelname,"segm_")) {
-		/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
-		 * tensor for the light model with masks for background
-		 * (channel 0) and person (channel 1) where values are in
-		 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
-		 * softmax across both channels to yield foreground
-		 * probability in [0.0, 1.0]. */
-		for (unsigned int n = 0; n < info.output.total(); n++) {
-			float exp0 = expf(tmp[2*n  ]);
-			float exp1 = expf(tmp[2*n+1]);
-			float p0 = exp0 / (exp0+exp1);
-			float p1 = exp1 / (exp0+exp1);
-			uint8_t val = (p0 < p1 ? 0 : 255);
-			out[n] = (val & 0xE0) | (out[n] >> 3);
-		}
-	}
 	if (info.onmask)
 		info.onmask(info.caller_ctx);
 

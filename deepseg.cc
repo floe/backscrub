@@ -163,6 +163,10 @@ void oninfer(void *ctx) { ((timinginfo_t *)ctx)->tfltns=timestamp(); }
 void onmask(void *ctx) { ((timinginfo_t *)ctx)->maskns=timestamp(); }
 
 // let's do this!
+static bool is_number(const std::string &s) {
+  return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
+}
+
 int main(int argc, char* argv[]) {
 
 	printf("deepseg version %s\n", _STR(DEEPSEG_VERSION));
@@ -181,6 +185,7 @@ int main(int argc, char* argv[]) {
 	bool flipHorizontal = false;
 	bool flipVertical   = false;
 	int fourcc = 0;
+	size_t blur_strength = 0;
 
 	const char* modelname = "models/segm_full_v679.tflite";
 
@@ -191,7 +196,7 @@ int main(int argc, char* argv[]) {
 			showUsage = true;
 		} else if (strncmp(argv[arg], "-d", 2)==0) {
 			++debug;
-		} else if (strncmp(argv[arg], "-p", 2)==0) {
+		} else if (strncmp(argv[arg], "-s", 2)==0) {
 			showProgress = true;
 		} else if (strncmp(argv[arg], "-H", 2)==0) {
 			flipHorizontal = !flipHorizontal;
@@ -218,6 +223,29 @@ int main(int argc, char* argv[]) {
 		} else if (strncmp(argv[arg], "-m", 2)==0) {
 			if (hasArgument) {
 				modelname = argv[++arg];
+			} else {
+				showUsage = true;
+			}
+		} else if (strncmp(argv[arg], "-p", 2)==0) {
+			if (hasArgument) {
+				std::string option = argv[++arg];
+				std::string key = option.substr(0, option.find(":"));
+				std::string value = option.substr(option.find(":")+1);
+				if (key == "bgblur") {
+					if (is_number(value)) {
+					blur_strength = std::stoi(value);
+					if (blur_strength % 2 == 0) {
+						fprintf(stderr, "strength value must be odd\n");
+						showUsage = true;
+					}
+					} else {
+						printf("No strength value supplied, using default strength 25\n");
+						blur_strength = 25;
+					}
+				} else {
+					fprintf(stderr, "Unknown post-processing option: %s\n", option.c_str());
+					showUsage = true;
+				}
 			} else {
 				showUsage = true;
 			}
@@ -254,6 +282,8 @@ int main(int argc, char* argv[]) {
 			} else {
 				showUsage = true;
 			}
+		} else {
+			fprintf(stderr, "Unknown option: %s\n", argv[arg]);
 		}
 	}
 
@@ -261,11 +291,11 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "usage:\n");
 		fprintf(stderr, "  deepseg [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
-		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>]\n");
+		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>] [-p <option:value>]\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "-?            Display this usage information\n");
 		fprintf(stderr, "-d            Increase debug level\n");
-		fprintf(stderr, "-p            Show progress bar\n");
+		fprintf(stderr, "-s            Show progress bar\n");
 		fprintf(stderr, "-c            Specify the video source (capture) device\n");
 		fprintf(stderr, "-v            Specify the video target (sink) device\n");
 		fprintf(stderr, "-w            Specify the video stream width\n");
@@ -274,6 +304,8 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
 		fprintf(stderr, "-b            Specify the background image\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
+		fprintf(stderr, "-p            Add post-processing steps\n");
+		fprintf(stderr, "-p bgblur:<strength>   Blur the video background\n");
 		fprintf(stderr, "-H            Mirror the output horizontally\n");
 		fprintf(stderr, "-V            Mirror the output vertically\n");
 		exit(1);
@@ -350,6 +382,11 @@ int main(int argc, char* argv[]) {
 		calcinfo.raw = *capinfo.raw;
 		ti.copyns=timestamp();
 		if (calcinfo.raw.rows == 0 || calcinfo.raw.cols == 0) continue; // sanity check
+
+		if (blur_strength) {
+			calcinfo.raw.copyTo(bg);
+			cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
+		}
 
 		if (filterActive) {
 			// do background detection magic
