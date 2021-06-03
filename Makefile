@@ -11,14 +11,14 @@ ifeq ($(VERSION),)
 	VERSION=v0.2.0-no-git
 endif
 
-CFLAGS += -D DEEPSEG_VERSION=$(VERSION) -I .
+CFLAGS += -D DEEPSEG_VERSION=$(VERSION) -I.
 
 # TensorFlow
-TFBASE=tensorflow
-TFLITE=$(TFBASE)/tensorflow/lite/tools/make
+TENSORFLOW=tensorflow
+TFLITE=$(TENSORFLOW)/tensorflow/lite/tools/make
 TFDOWN=$(TFLITE)/downloads/cpuinfo
 TFLIBS=$(TFLITE)/gen/linux_x86_64/lib
-TFCFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include -ggdb
+TFCFLAGS += -I $(TENSORFLOW) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include -ggdb
 TFLDFLAGS += -L $(TFLIBS) -ltensorflow-lite -ldl
 
 # OpenCV
