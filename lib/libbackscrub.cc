@@ -23,8 +23,6 @@ static void _dbg(calcinfo_t &info, const char *fmt, ...) {
 	va_end(ap);
 }
 
-using namespace tflite;
-
 // Tensorflow Lite helper functions
 enum class modeltype_t {
 	Unknown,
@@ -41,7 +39,7 @@ struct normalization_t {
 
 struct backscrub_ctx_t {
 	std::unique_ptr<tflite::FlatBufferModel> model;
-	std::unique_ptr<Interpreter> interpreter;
+	std::unique_ptr<tflite::Interpreter> interpreter;
 	modeltype_t modeltype;
 	normalization_t norm;
 };
@@ -128,7 +126,7 @@ int init_tensorflow(calcinfo_t &info) {
 	tflite::ops::builtin::BuiltinOpResolver resolver;
 	// custom op for Google Meet network
 	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
-	InterpreterBuilder builder(*ctx.model, resolver);
+	tflite::InterpreterBuilder builder(*ctx.model, resolver);
 	builder(&ctx.interpreter);
 	TFLITE_MINIMAL_CHECK(ctx.interpreter != nullptr);
 
