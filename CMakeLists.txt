@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 project(backscrub CXX)
 
+if(NOT DEFINED TENSORFLOW)
+  set(TENSORFLOW tensorflow)
+endif()
+
 find_package(Git)
 if(GIT_FOUND)
   execute_process(
@@ -23,14 +27,15 @@ add_compile_definitions(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
 
 # This assumes that tensorflow got checked out as submodule.
 # True, if `git clone` had the additional option `--recursive`.
-add_subdirectory(tensorflow/tensorflow/lite
+add_subdirectory(${TENSORFLOW}/tensorflow/lite
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
 
 add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION})
+include_directories(BEFORE .)
 
 add_library(backscrub
-  libbackscrub.cc
-  transpose_conv_bias.cc)
+  lib/libbackscrub.cc
+  lib/transpose_conv_bias.cc)
 
 target_link_libraries(backscrub
   tensorflow-lite ${CMAKE_DL_LIBS}
@@ -38,14 +43,18 @@ target_link_libraries(backscrub
   opencv_imgproc
 )
 
+add_library(videoio
+  videoio/loopback.cc)
+
+target_link_libraries(videoio)
+
 add_executable(deepseg
-  deepseg.cc
-  loopback.cc
-  transpose_conv_bias.cc
+  app/deepseg.cc
 )
 
 target_link_libraries(deepseg
   backscrub
+  videoio
   opencv_core
   opencv_video
   opencv_videoio

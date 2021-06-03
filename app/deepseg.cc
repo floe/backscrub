@@ -17,8 +17,8 @@
 #include <opencv2/imgproc/types_c.h>
 #include <opencv2/videoio/videoio_c.h>
 
-#include "loopback.h"
-#include "libbackscrub.h"
+#include "videoio/loopback.h"
+#include "lib/libbackscrub.h"
 
 // Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
 // http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).

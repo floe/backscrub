@@ -11,11 +11,12 @@ ifeq ($(VERSION),)
 	VERSION=v0.2.0-no-git
 endif
 
-CFLAGS += -D DEEPSEG_VERSION=$(VERSION)
+CFLAGS += -D DEEPSEG_VERSION=$(VERSION) -I .
 
 # TensorFlow
 TFBASE=tensorflow
 TFLITE=$(TFBASE)/tensorflow/lite/tools/make
+TFDOWN=$(TFLITE)/downloads/cpuinfo
 TFLIBS=$(TFLITE)/gen/linux_x86_64/lib
 TFCFLAGS += -I $(TFBASE) -I $(TFLITE)/downloads/absl -I $(TFLITE)/downloads/flatbuffers/include -ggdb
 TFLDFLAGS += -L $(TFLIBS) -ltensorflow-lite -ldl
@@ -44,7 +45,7 @@ $(BIN):
 	-mkdir -p $(BIN)
 
 # Primary binaries - special deps
-$(BIN)/deepseg: deepseg.cc loopback.cc $(BIN)/libbackscrub.a
+$(BIN)/deepseg: app/deepseg.cc $(BIN)/libbackscrub.a $(BIN)/libvideoio.a
 	g++ $^ ${CFLAGS} ${TFCFLAGS} ${LDFLAGS} ${TFLDFLAGS} -o $@
 
 # Unusual archive munging here is the nicest way to ensure we have Tensorflow Lite & our library code
@@ -53,13 +54,28 @@ $(BIN)/libbackscrub.a: $(BIN)/libbackscrub.o $(BIN)/transpose_conv_bias.o $(TFLI
 	cp -p $(TFLIBS)/libtensorflow-lite.a $@
 	ar rv $@ $(BIN)/libbackscrub.o $(BIN)/transpose_conv_bias.o
 
-$(BIN)/%.o: %.cc
-	g++ $^ ${CFLAGS} ${TFCFLAGS} -c -o $@
+# Video I/O library - this is a Linux/v4l2loopback only target for now but replaceable later..
+$(BIN)/libvideoio.a: $(BIN)/loopback.o
+	ar rv $@ $^
+
+# Compile rules for various source directories
+$(BIN)/%.o: lib/%.cc
+	g++ $< ${CFLAGS} ${TFCFLAGS} -c -o $@
+
+$(BIN)/%.o: videoio/%.cc $(TFDOWN)
+	g++ $< ${CFLAGS} ${TFCFLAGS} -c -o $@
+
+$(BIN)/%.o: app/%.cc $(TFDOWN)
+	g++ $< ${CFLAGS} ${TFCFLAGS} -c -o $@
 
 # As cloned, TFLite needs building into a static library, as per:
 # https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/make
+# we split this into download (pre-compile) and build (pre-link)
+$(TFDOWN): $(TFLITE)
+	cd $(TFLITE) && ./download_dependencies.sh
+
 $(TFLIBS)/libtensorflow-lite.a: $(TFLITE)
-	cd $(TFLITE) && ./download_dependencies.sh && ./build_lib.sh
+	cd $(TFLITE) && ./build_lib.sh
 
 $(TFLITE):
 	git submodule update --init --recursive
