@@ -341,7 +341,10 @@ int main(int argc, char* argv[]) {
 	}
 
 	cv::VideoCapture cap(ccam, CV_CAP_V4L2);
-	TFLITE_MINIMAL_CHECK(cap.isOpened());
+	if(!cap.isOpened()) {
+		perror("failed to open video device");
+		exit(1);
+	}
 
 	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
@@ -350,7 +353,8 @@ int main(int argc, char* argv[]) {
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
 	calcinfo_t calcinfo = { modelname, threads, width, height, debug, nullptr, onprep, oninfer, onmask, &ti };
-	TFLITE_MINIMAL_CHECK(init_tensorflow(calcinfo));
+	if(!init_tensorflow(calcinfo))
+		exit(1);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
 	cv::Mat buf1;
@@ -390,7 +394,10 @@ int main(int argc, char* argv[]) {
 
 		if (filterActive) {
 			// do background detection magic
-			TFLITE_MINIMAL_CHECK(calc_mask(calcinfo));
+			if(!calc_mask(calcinfo)) {
+				fprintf(stderr, "failed to process video frame\n");
+				exit(1);
+			}
 
 			// alpha blend background over foreground using mask
 			calcinfo.raw = alpha_blend(bg, calcinfo.raw, calcinfo.mask);
@@ -413,7 +420,10 @@ int main(int argc, char* argv[]) {
 		int framesize = calcinfo.raw.step[0]*calcinfo.raw.rows;
 		while (framesize > 0) {
 			int ret = write(lbfd,calcinfo.raw.data,framesize);
-			TFLITE_MINIMAL_CHECK(ret > 0);
+			if(ret <= 0) {
+				perror("writing to loopback device");
+				exit(1);
+			}
 			framesize -= ret;
 		}
 		ti.v4l2ns=timestamp();

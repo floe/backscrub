@@ -11,12 +11,6 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <stdarg.h>
 
-#define TFLITE_MINIMAL_CHECK(x)                              \
-  if (!(x)) {                                                \
-	fprintf(stderr, "Error at %s:%d\n", __FILE__, __LINE__); \
-	exit(1);                                                 \
-  }
-
 // Shared state structure between caller and libbackscrub
 // backscrub_ctx MUST be zero'ed by caller before first use.
 typedef struct {

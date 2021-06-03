@@ -12,6 +12,12 @@
 #include "transpose_conv_bias.h"
 #include "libbackscrub.h"
 
+#define TFLITE_MINIMAL_CHECK(x)                              \
+  if (!(x)) {                                                \
+	fprintf(stderr, "Error at %s:%d\n", __FILE__, __LINE__); \
+	exit(1);                                                 \
+  }
+
 // Debug helper
 static void _dbg(calcinfo_t &info, const char *fmt, ...) {
 	va_list ap;
