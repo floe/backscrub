@@ -59,7 +59,7 @@ $(BIN)/libvideoio.a: $(BIN)/loopback.o
 	ar rv $@ $^
 
 # Compile rules for various source directories
-$(BIN)/%.o: lib/%.cc
+$(BIN)/%.o: lib/%.cc $(TFDOWN)
 	g++ $< ${CFLAGS} ${TFCFLAGS} -c -o $@
 
 $(BIN)/%.o: videoio/%.cc $(TFDOWN)
@@ -74,7 +74,7 @@ $(BIN)/%.o: app/%.cc $(TFDOWN)
 $(TFDOWN): $(TFLITE)
 	cd $(TFLITE) && ./download_dependencies.sh
 
-$(TFLIBS)/libtensorflow-lite.a: $(TFLITE)
+$(TFLIBS)/libtensorflow-lite.a: $(TFDOWN)
 	cd $(TFLITE) && ./build_lib.sh
 
 $(TFLITE):
