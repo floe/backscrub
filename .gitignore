@@ -1,5 +1,6 @@
-# Output folder
+# Output folders
 bin/
+build/
 
 # dotfiles and folders
 .*/
