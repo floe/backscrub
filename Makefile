@@ -45,14 +45,12 @@ $(BIN):
 	-mkdir -p $(BIN)
 
 # Primary binaries - special deps
-$(BIN)/deepseg: app/deepseg.cc $(BIN)/libbackscrub.a $(BIN)/libvideoio.a
+$(BIN)/deepseg: app/deepseg.cc $(BIN)/libbackscrub.a $(BIN)/libvideoio.a $(TFLIBS)/libtensorflow-lite.a
 	g++ $^ ${CFLAGS} ${TFCFLAGS} ${LDFLAGS} ${TFLDFLAGS} -o $@
 
-# Unusual archive munging here is the nicest way to ensure we have Tensorflow Lite & our library code
-# easily accessible through one static library
-$(BIN)/libbackscrub.a: $(BIN)/libbackscrub.o $(BIN)/transpose_conv_bias.o $(TFLIBS)/libtensorflow-lite.a
-	cp -p $(TFLIBS)/libtensorflow-lite.a $@
-	ar rv $@ $(BIN)/libbackscrub.o $(BIN)/transpose_conv_bias.o
+# Backscrub library, must be linked with libtensorflow-lite.a
+$(BIN)/libbackscrub.a: $(BIN)/libbackscrub.o $(BIN)/transpose_conv_bias.o
+	ar rv $@ $^
 
 # Video I/O library - this is a Linux/v4l2loopback only target for now but replaceable later..
 $(BIN)/libvideoio.a: $(BIN)/loopback.o
