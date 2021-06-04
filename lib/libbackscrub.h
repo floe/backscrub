@@ -6,7 +6,6 @@
 #define _LIBBACKSCRUB_H
 
 // for cv::Mat and related types
-#include <stdarg.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
@@ -19,7 +18,7 @@ extern void *bs_maskgen_new(
 	size_t height,
 	// Optional (nullable) callbacks with caller-provided context
 	// ..debug output
-	void (*ondebug)(void *ctx, const char *fmt, va_list ap),
+	void (*ondebug)(void *ctx, const char *msg),
 	// ..after preparing video frame
 	void (*onprep)(void *ctx),
 	// ..after running inference
@@ -28,12 +27,12 @@ extern void *bs_maskgen_new(
 	void (*onmask)(void *ctx),
 	// ..the returned context
 	void *caller_ctx
-	);
+);
 
 // Delete the mask generation context
 extern void bs_maskgen_delete(void *context);
 
 // Process a video frame into a mask
-extern int bs_maskgen_process(void *context, cv::Mat& frame, cv::Mat &mask);
+extern bool bs_maskgen_process(void *context, cv::Mat& frame, cv::Mat &mask);
 
 #endif

@@ -33,7 +33,7 @@ struct backscrub_ctx_t {
 	modeltype_t modeltype;
 	normalization_t norm;
 	// Optional callbacks with caller-provided context
-	void (*ondebug)(void *ctx, const char *fmt, va_list ap);
+	void (*ondebug)(void *ctx, const char *msg);
 	void (*onprep)(void *ctx);
 	void (*oninfer)(void *ctx);
 	void (*onmask)(void *ctx);
@@ -53,10 +53,13 @@ struct backscrub_ctx_t {
 static void _dbg(backscrub_ctx_t &ctx, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
-	if (ctx.ondebug)
-		ctx.ondebug(ctx.caller_ctx, fmt, ap);
-	else
+	char *msg;
+	if (ctx.ondebug && vasprintf(&msg, fmt, ap)>0) {
+		ctx.ondebug(ctx.caller_ctx, msg);
+		free(msg);
+	} else {
 		vfprintf(stderr, fmt, ap);
+	}
 	va_end(ap);
 }
 
@@ -136,7 +139,7 @@ void *bs_maskgen_new(
 	size_t height,
 	// Optional (nullable) callbacks with caller-provided context
 	// ..debug output
-	void (*ondebug)(void *ctx, const char *fmt, va_list ap),
+	void (*ondebug)(void *ctx, const char *msg),
 	// ..after preparing video frame
 	void (*onprep)(void *ctx),
 	// ..after running inference
@@ -145,7 +148,7 @@ void *bs_maskgen_new(
 	void (*onmask)(void *ctx),
 	// ..the returned context
 	void *caller_ctx
-	) {
+) {
 	// Allocate context
 	backscrub_ctx_t *pctx = new backscrub_ctx_t;
 	// Take a reference so we can write tidy code with ctx.<x>
@@ -158,7 +161,7 @@ void *bs_maskgen_new(
 	ctx.caller_ctx = caller_ctx;
 	// Load model
 	ctx.model = tflite::FlatBufferModel::BuildFromFile(modelname);
-	if (nullptr == ctx.model) {
+	if (!ctx.model) {
 		_dbg(ctx, "error: unable to load model from file: '%s'.\n", modelname);
 		bs_maskgen_delete(pctx);
 		return nullptr;
@@ -177,7 +180,7 @@ void *bs_maskgen_new(
 	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
 	tflite::InterpreterBuilder builder(*ctx.model, resolver);
 	builder(&ctx.interpreter);
-	if (nullptr == ctx.interpreter) {
+	if (!ctx.interpreter) {
 		_dbg(ctx, "error: unable to build model interpreter\n");
 		bs_maskgen_delete(pctx);
 		return nullptr;
@@ -197,6 +200,10 @@ void *bs_maskgen_new(
 	// get input and output tensor as cv::Mat
 	ctx.input = getTensorMat(ctx, ctx.interpreter->inputs ()[0]);
 	ctx.output = getTensorMat(ctx, ctx.interpreter->outputs()[0]);
+	if (ctx.input.empty() || ctx.output.empty()) {
+		bs_maskgen_delete(pctx);
+		return nullptr;
+	}
 	ctx.ratio = (float)ctx.input.cols/(float) ctx.input.rows;
 
 	// initialize mask and model-aspect ROI in center
@@ -213,7 +220,7 @@ void *bs_maskgen_new(
 }
 
 void bs_maskgen_delete(void *context) {
-	if (nullptr == context)
+	if (!context)
 		return;
 	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)context);
 	// clear all mask data
@@ -230,9 +237,9 @@ void bs_maskgen_delete(void *context) {
 	delete &ctx;
 }
 
-int bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
-	if (nullptr == context)
-		return 0;
+bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
+	if (!context)
+		return false;
 	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)context);
 
 	// map ROI
@@ -259,7 +266,7 @@ int bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 	// Run inference
 	if (ctx.interpreter->Invoke() != kTfLiteOk) {
 		_dbg(ctx, "error: failed to interpret video frame\n");
-		return 0;
+		return false;
 	}
 	if (ctx.oninfer)
 		ctx.oninfer(ctx.caller_ctx);
@@ -310,7 +317,7 @@ int bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 			break;
 		case modeltype_t::Unknown:
 			_dbg(ctx, "error: unknown model type (%d)\n", ctx.modeltype);
-			break;
+			return false;
 	}
 
 	if (ctx.onmask)
@@ -325,6 +332,6 @@ int bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 
 	// copy out
 	mask = ctx.mask;
-	return 1;
+	return true;
 }
 
