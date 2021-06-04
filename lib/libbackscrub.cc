@@ -2,8 +2,6 @@
  * Authors - @see AUTHORS file.
 ==============================================================================*/
 
-// tested against tensorflow lite v2.4.1 (static library)
-
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -12,24 +10,7 @@
 #include "transpose_conv_bias.h"
 #include "libbackscrub.h"
 
-#define TFLITE_MINIMAL_CHECK(x)                              \
-  if (!(x)) {                                                \
-	fprintf(stderr, "Error at %s:%d\n", __FILE__, __LINE__); \
-	exit(1);                                                 \
-  }
-
-// Debug helper
-static void _dbg(calcinfo_t &info, const char *fmt, ...) {
-	va_list ap;
-	va_start(ap, fmt);
-	if (info.ondebug)
-		info.ondebug(info.caller_ctx, fmt, ap);
-	else
-		vfprintf(stderr, fmt, ap);
-	va_end(ap);
-}
-
-// Tensorflow Lite helper functions
+// Internal context structures
 enum class modeltype_t {
 	Unknown,
 	BodyPix,
@@ -44,30 +25,66 @@ struct normalization_t {
 };
 
 struct backscrub_ctx_t {
+	// Loaded inference model
 	std::unique_ptr<tflite::FlatBufferModel> model;
+	// Model interpreter instance
 	std::unique_ptr<tflite::Interpreter> interpreter;
+	// Specific model type & input normalization
 	modeltype_t modeltype;
 	normalization_t norm;
+	// Optional callbacks with caller-provided context
+	void (*ondebug)(void *ctx, const char *fmt, va_list ap);
+	void (*onprep)(void *ctx);
+	void (*oninfer)(void *ctx);
+	void (*onmask)(void *ctx);
+	void *caller_ctx;
+	// Processing state
+	cv::Mat input;
+	cv::Mat output;
+	cv::Rect roidim;
+	cv::Mat mask;
+	cv::Mat mroi;
+	cv::Mat ofinal;
+	cv::Size blur;
+	float ratio;
 };
 
-static cv::Mat getTensorMat(calcinfo_t &info, int tnum) {
+// Debug helper
+static void _dbg(backscrub_ctx_t &ctx, const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	if (ctx.ondebug)
+		ctx.ondebug(ctx.caller_ctx, fmt, ap);
+	else
+		vfprintf(stderr, fmt, ap);
+	va_end(ap);
+}
 
-	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
+static cv::Mat getTensorMat(backscrub_ctx_t &ctx, int tnum) {
+
 	TfLiteType t_type = ctx.interpreter->tensor(tnum)->type;
-	TFLITE_MINIMAL_CHECK(t_type == kTfLiteFloat32);
+	if (kTfLiteFloat32 != t_type) {
+		_dbg(ctx,"error: tensor #%d: is not float32 type (%d)\n", tnum, t_type);
+		return cv::Mat();
+	}
 
 	TfLiteIntArray* dims = ctx.interpreter->tensor(tnum)->dims;
-	if (info.debug)
-		for (int i = 0; i < dims->size; i++)
-			_dbg(info,"tensor #%d: %d\n",tnum,dims->data[i]);
-	TFLITE_MINIMAL_CHECK(dims->data[0] == 1);
+	for (int i = 0; i < dims->size; i++)
+		_dbg(ctx,"tensor #%d: %d\n",tnum,dims->data[i]);
+	if (dims->data[0] != 1) {
+		_dbg(ctx,"error: tensor #%d: is not single vector (%d)\n", tnum, dims->data[0]);
+		return cv::Mat();
+	}
 
 	int h = dims->data[1];
 	int w = dims->data[2];
 	int c = dims->data[3];
 
 	float* p_data = ctx.interpreter->typed_tensor<float>(tnum);
-	TFLITE_MINIMAL_CHECK(p_data != nullptr);
+	if (nullptr == p_data) {
+		_dbg(ctx,"error: tensor #%d: unable to obtain data pointer\n", tnum);
+		return cv::Mat();
+	}
 
 	return cv::Mat(h,w,CV_32FC(c),p_data);
 }
@@ -91,7 +108,7 @@ static modeltype_t get_modeltype(const char* modelname) {
 }
 
 static normalization_t get_normalization(modeltype_t type) {
-	// TODO: This should be read out from actual mode metadata instead
+	// TODO: This should be read out from actual model metadata instead
 	switch (type) {
 		case modeltype_t::DeepLab:
 			return normalization_t{.scaling = 1/127.5, .offset = -1};
@@ -105,28 +122,54 @@ static normalization_t get_normalization(modeltype_t type) {
 }
 
 // deeplabv3 classes
+// TODO: read from model metadata file
 static const std::vector<std::string> labels = { "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "dining table", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv" };
 // label number of "person" for DeepLab v3+ model
 static const size_t cnum = labels.size();
 static const size_t pers = std::distance(labels.begin(), std::find(labels.begin(),labels.end(),"person"));
 
-int init_tensorflow(calcinfo_t &info) {
-	// Deallocate if not done already
-	if (info.backscrub_ctx)
-		drop_tensorflow(info);
+void *bs_maskgen_new(
+	// Required parameters
+	const char *modelname,
+	size_t threads,
+	size_t width,
+	size_t height,
+	// Optional (nullable) callbacks with caller-provided context
+	// ..debug output
+	void (*ondebug)(void *ctx, const char *fmt, va_list ap),
+	// ..after preparing video frame
+	void (*onprep)(void *ctx),
+	// ..after running inference
+	void (*oninfer)(void *ctx),
+	// ..after generating mask
+	void (*onmask)(void *ctx),
+	// ..the returned context
+	void *caller_ctx
+	) {
 	// Allocate context
-	info.backscrub_ctx = new backscrub_ctx_t;
+	backscrub_ctx_t *pctx = new backscrub_ctx_t;
 	// Take a reference so we can write tidy code with ctx.<x>
-	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
+	backscrub_ctx_t &ctx = *pctx;
+	// Save callbacks
+	ctx.ondebug = ondebug;
+	ctx.onprep = onprep;
+	ctx.oninfer = oninfer;
+	ctx.onmask = onmask;
+	ctx.caller_ctx = caller_ctx;
 	// Load model
-	ctx.model = tflite::FlatBufferModel::BuildFromFile(info.modelname);
-	TFLITE_MINIMAL_CHECK(ctx.model != nullptr);
+	ctx.model = tflite::FlatBufferModel::BuildFromFile(modelname);
+	if (nullptr == ctx.model) {
+		_dbg(ctx, "error: unable to load model from file: '%s'.\n", modelname);
+		bs_maskgen_delete(pctx);
+		return nullptr;
+	}
 	// Determine model type and normalization values
-	ctx.modeltype = get_modeltype(info.modelname);
+	ctx.modeltype = get_modeltype(modelname);
 	ctx.norm = get_normalization(ctx.modeltype);
 	if (modeltype_t::Unknown == ctx.modeltype) {
-		_dbg(info, "Unknown model type '%s'.\n", info.modelname);
-		return 0;
+		_dbg(ctx, "error: unknown model type '%s'.\n", modelname);
+		bs_maskgen_delete(pctx);
+		return nullptr;
 	}
 	// Build the interpreter
 	tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -134,65 +177,70 @@ int init_tensorflow(calcinfo_t &info) {
 	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
 	tflite::InterpreterBuilder builder(*ctx.model, resolver);
 	builder(&ctx.interpreter);
-	TFLITE_MINIMAL_CHECK(ctx.interpreter != nullptr);
+	if (nullptr == ctx.interpreter) {
+		_dbg(ctx, "error: unable to build model interpreter\n");
+		bs_maskgen_delete(pctx);
+		return nullptr;
+	}
 
 	// Allocate tensor buffers.
-	TFLITE_MINIMAL_CHECK(ctx.interpreter->AllocateTensors() == kTfLiteOk);
+	if (ctx.interpreter->AllocateTensors() != kTfLiteOk) {
+		_dbg(ctx, "error: unable to allocate tensor buffers\n");
+		bs_maskgen_delete(pctx);
+		return nullptr;
+	}
 
 	// set interpreter params
-	ctx.interpreter->SetNumThreads(info.threads);
+	ctx.interpreter->SetNumThreads(threads);
 	ctx.interpreter->SetAllowFp16PrecisionForFp32(true);
 
 	// get input and output tensor as cv::Mat
-	info.input = getTensorMat(info, ctx.interpreter->inputs ()[0]);
-	info.output = getTensorMat(info, ctx.interpreter->outputs()[0]);
-	info.ratio = (float)info.input.cols/(float) info.input.rows;
+	ctx.input = getTensorMat(ctx, ctx.interpreter->inputs ()[0]);
+	ctx.output = getTensorMat(ctx, ctx.interpreter->outputs()[0]);
+	ctx.ratio = (float)ctx.input.cols/(float) ctx.input.rows;
 
-	// initialize mask and square ROI in center
-	info.roidim = cv::Rect((info.width-info.height/info.ratio)/2,0,info.height/info.ratio,info.height);
-	info.mask = cv::Mat::ones(info.height,info.width,CV_8UC1)*255;
-	info.mroi = info.mask(info.roidim);
+	// initialize mask and model-aspect ROI in center
+	ctx.roidim = cv::Rect((width-height/ctx.ratio)/2,0,height/ctx.ratio,height);
+	ctx.mask = cv::Mat::ones(height,width,CV_8UC1)*255;
+	ctx.mroi = ctx.mask(ctx.roidim);
 
 	// mask blurring size
-	info.blur = cv::Size(5,5);
+	ctx.blur = cv::Size(5,5);
 
 	// create Mat for small mask
-	info.ofinal = cv::Mat(info.output.rows,info.output.cols,CV_8UC1);
-	return 1;
+	ctx.ofinal = cv::Mat(ctx.output.rows,ctx.output.cols,CV_8UC1);
+	return pctx;
 }
 
-void drop_tensorflow(calcinfo_t &info) {
-	if (info.debug)
-		_dbg(info, "dropping tensorflow context\n");
+void bs_maskgen_delete(void *context) {
+	if (nullptr == context)
+		return;
+	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)context);
 	// clear all mask data
-	info.ofinal.deallocate();
-	info.mask.deallocate();
-	info.input.deallocate();
-	info.output.deallocate();
-	// clear internal context if present
-	if (info.backscrub_ctx) {
-		backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
-		// drop interpreter
+	ctx.ofinal.deallocate();
+	ctx.mask.deallocate();
+	ctx.input.deallocate();
+	ctx.output.deallocate();
+	// drop interpreter (if present)
+	if (ctx.interpreter != nullptr)
 		ctx.interpreter.reset();
-		// drop model
+	// drop model (if present)
+	if (ctx.model != nullptr)
 		ctx.model.reset();
-		// drop context
-		delete &ctx;
-		info.backscrub_ctx = nullptr;
-	}
+	delete &ctx;
 }
 
-int calc_mask(calcinfo_t &info) {
-	// Ensure we have a context from init_tensorflow()
-	TFLITE_MINIMAL_CHECK(info.backscrub_ctx!=NULL);
-	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)info.backscrub_ctx);
+int bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
+	if (nullptr == context)
+		return 0;
+	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)context);
 
 	// map ROI
-	cv::Mat roi = info.raw(info.roidim);
+	cv::Mat roi = frame(ctx.roidim);
 
 	// resize ROI to input size
 	cv::Mat in_u8_bgr, in_u8_rgb;
-	cv::resize(roi,in_u8_bgr,cv::Size(info.input.cols,info.input.rows));
+	cv::resize(roi,in_u8_bgr,cv::Size(ctx.input.cols,ctx.input.rows));
 	cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
 	// TODO: can convert directly to float?
 
@@ -204,22 +252,25 @@ int calc_mask(calcinfo_t &info) {
 	}
 
 	// convert to float and normalize values expected by the model
-	in_u8_rgb.convertTo(info.input,CV_32FC3,ctx.norm.scaling,ctx.norm.offset);
-	if (info.onprep)
-		info.onprep(info.caller_ctx);
+	in_u8_rgb.convertTo(ctx.input,CV_32FC3,ctx.norm.scaling,ctx.norm.offset);
+	if (ctx.onprep)
+		ctx.onprep(ctx.caller_ctx);
 
 	// Run inference
-	TFLITE_MINIMAL_CHECK(ctx.interpreter->Invoke() == kTfLiteOk);
-	if (info.oninfer)
-		info.oninfer(info.caller_ctx);
+	if (ctx.interpreter->Invoke() != kTfLiteOk) {
+		_dbg(ctx, "error: failed to interpret video frame\n");
+		return 0;
+	}
+	if (ctx.oninfer)
+		ctx.oninfer(ctx.caller_ctx);
 
-	float* tmp = (float*)info.output.data;
-	uint8_t* out = (uint8_t*)info.ofinal.data;
+	float* tmp = (float*)ctx.output.data;
+	uint8_t* out = (uint8_t*)ctx.ofinal.data;
 
 	switch (ctx.modeltype) {
 		case modeltype_t::DeepLab:
 			// find class with maximum probability
-			for (unsigned int n = 0; n < info.output.total(); n++) {
+			for (unsigned int n = 0; n < ctx.output.total(); n++) {
 				float maxval = -10000; size_t maxpos = 0;
 				for (size_t i = 0; i < cnum; i++) {
 					if (tmp[n*cnum+i] > maxval) {
@@ -235,7 +286,7 @@ int calc_mask(calcinfo_t &info) {
 		case modeltype_t::BodyPix:
 		case modeltype_t::MLKitSelfie:
 			// threshold probability
-			for (unsigned int n = 0; n < info.output.total(); n++) {
+			for (unsigned int n = 0; n < ctx.output.total(); n++) {
 				// FIXME: hardcoded threshold
 				uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
 				out[n] = (val & 0xE0) | (out[n] >> 3);
@@ -248,7 +299,7 @@ int calc_mask(calcinfo_t &info) {
 			 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
 			 * softmax across both channels to yield foreground
 			 * probability in [0.0, 1.0]. */
-			for (unsigned int n = 0; n < info.output.total(); n++) {
+			for (unsigned int n = 0; n < ctx.output.total(); n++) {
 				float exp0 = expf(tmp[2*n  ]);
 				float exp1 = expf(tmp[2*n+1]);
 				float p0 = exp0 / (exp0+exp1);
@@ -258,19 +309,22 @@ int calc_mask(calcinfo_t &info) {
 			}
 			break;
 		case modeltype_t::Unknown:
-			fprintf(stderr, "Unknown model type\n");
+			_dbg(ctx, "error: unknown model type (%d)\n", ctx.modeltype);
 			break;
 	}
 
-	if (info.onmask)
-		info.onmask(info.caller_ctx);
+	if (ctx.onmask)
+		ctx.onmask(ctx.caller_ctx);
 
 	// scale up into full-sized mask
 	cv::Mat tmpbuf;
-	cv::resize(info.ofinal,tmpbuf,cv::Size(info.raw.rows/info.ratio,info.raw.rows));
+	cv::resize(ctx.ofinal,tmpbuf,cv::Size(frame.rows/ctx.ratio,frame.rows));
 
 	// blur at full size for maximum smoothness
-	cv::blur(tmpbuf,info.mroi,info.blur);
+	cv::blur(tmpbuf,ctx.mroi,ctx.blur);
+
+	// copy out
+	mask = ctx.mask.clone();
 	return 1;
 }
 

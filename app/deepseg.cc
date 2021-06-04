@@ -352,8 +352,8 @@ int main(int argc, char* argv[]) {
 		cap.set(CV_CAP_PROP_FOURCC, fourcc);
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
-	calcinfo_t calcinfo = { modelname, threads, width, height, debug, nullptr, onprep, oninfer, onmask, &ti };
-	if(!init_tensorflow(calcinfo))
+	void *maskctx = bs_maskgen_new(modelname, threads, width, height, nullptr, onprep, oninfer, onmask, &ti);
+	if (!maskctx)
 		exit(1);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
@@ -383,43 +383,44 @@ int main(int argc, char* argv[]) {
 			capinfo.raw = tmat;
 		}
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
-		calcinfo.raw = *capinfo.raw;
+		cv::Mat raw = *capinfo.raw;
 		ti.copyns=timestamp();
-		if (calcinfo.raw.rows == 0 || calcinfo.raw.cols == 0) continue; // sanity check
+		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
 		if (blur_strength) {
-			calcinfo.raw.copyTo(bg);
+			raw.copyTo(bg);
 			cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
 		}
 
 		if (filterActive) {
 			// do background detection magic
-			if(!calc_mask(calcinfo)) {
+			cv::Mat mask;
+			if(!bs_maskgen_process(maskctx, raw, mask)) {
 				fprintf(stderr, "failed to process video frame\n");
 				exit(1);
 			}
 
 			// alpha blend background over foreground using mask
-			calcinfo.raw = alpha_blend(bg, calcinfo.raw, calcinfo.mask);
+			raw = alpha_blend(bg, raw, mask);
 		} else {
 			// fix up timing values
 			ti.maskns=ti.tfltns=ti.prepns=ti.copyns;
 		}
 
 		if (flipHorizontal && flipVertical) {
-			cv::flip(calcinfo.raw,calcinfo.raw,-1);
+			cv::flip(raw,raw,-1);
 		} else if (flipHorizontal) {
-			cv::flip(calcinfo.raw,calcinfo.raw,1);
+			cv::flip(raw,raw,1);
 		} else if (flipVertical) {
-			cv::flip(calcinfo.raw,calcinfo.raw,0);
+			cv::flip(raw,raw,0);
 		}
 		ti.postns=timestamp();
 
 		// write frame to v4l2loopback as YUYV
-		calcinfo.raw = convert_rgb_to_yuyv(calcinfo.raw);
-		int framesize = calcinfo.raw.step[0]*calcinfo.raw.rows;
+		raw = convert_rgb_to_yuyv(raw);
+		int framesize = raw.step[0]*raw.rows;
 		while (framesize > 0) {
-			int ret = write(lbfd,calcinfo.raw.data,framesize);
+			int ret = write(lbfd,raw.data,framesize);
 			if(ret <= 0) {
 				perror("writing to loopback device");
 				exit(1);
@@ -454,7 +455,7 @@ int main(int argc, char* argv[]) {
 		if (debug < 2) continue;
 
 		cv::Mat test;
-		cv::cvtColor(calcinfo.raw,test,CV_YUV2BGR_YUYV);
+		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
 		cv::imshow("DeepSeg " _STR(DEEPSEG_VERSION),test);
 
 		auto keyPress = cv::waitKey(1);

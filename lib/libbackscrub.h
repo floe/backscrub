@@ -2,47 +2,38 @@
  * Authors - @see AUTHORS file.
 ==============================================================================*/
 
-// tested against tensorflow lite v2.4.1 (static library)
 #ifndef _LIBBACKSCRUB_H
 #define _LIBBACKSCRUB_H
 
 // for cv::Mat and related types
+#include <stdarg.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-#include <stdarg.h>
 
-// Shared state structure between caller and libbackscrub
-// backscrub_ctx MUST be zero'ed by caller before first use.
-typedef struct {
-	// Required to be set before calling init_tensorflow
-	// XXX:TODO: poss should be formal params - PAA
-	const char *modelname;
-	size_t threads;
-	size_t width;
-	size_t height;
-	int debug;
-	// Optional callbacks with context between processing steps
-	void (*ondebug)(void *ctx, const char *fmt, va_list ap);
-	void (*onprep)(void *ctx);
-	void (*oninfer)(void *ctx);
-	void (*onmask)(void *ctx);
-	void *caller_ctx;
-	// Used by libbackscrub / callbacks (eg: adjusting blur size)
-	// XXX:TODO: probably too much coupling - PAA
-	cv::Mat input;
-	cv::Mat output;
-	cv::Rect roidim;
-	cv::Mat mask;
-	cv::Mat mroi;
-	cv::Mat raw;
-	cv::Mat ofinal;
-	cv::Size blur;
-	float ratio;
-	void *backscrub_ctx;	// opaque context used by libbackscrub
-} calcinfo_t;
+// Return a new (opaque) mask generation context
+extern void *bs_maskgen_new(
+	// Required parameters
+	const char *modelname,
+	size_t threads,
+	size_t width,
+	size_t height,
+	// Optional (nullable) callbacks with caller-provided context
+	// ..debug output
+	void (*ondebug)(void *ctx, const char *fmt, va_list ap),
+	// ..after preparing video frame
+	void (*onprep)(void *ctx),
+	// ..after running inference
+	void (*oninfer)(void *ctx),
+	// ..after generating mask
+	void (*onmask)(void *ctx),
+	// ..the returned context
+	void *caller_ctx
+	);
 
-extern int init_tensorflow(calcinfo_t &info);
-extern void drop_tensorflow(calcinfo_t &info);
-extern int calc_mask(calcinfo_t &info);
+// Delete the mask generation context
+extern void bs_maskgen_delete(void *context);
+
+// Process a video frame into a mask
+extern int bs_maskgen_process(void *context, cv::Mat& frame, cv::Mat &mask);
 
 #endif
