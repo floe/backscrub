@@ -324,7 +324,7 @@ int bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 	cv::blur(tmpbuf,ctx.mroi,ctx.blur);
 
 	// copy out
-	mask = ctx.mask.clone();
+	mask = ctx.mask;
 	return 1;
 }
 
