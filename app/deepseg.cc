@@ -11,19 +11,14 @@
 #include <thread>
 #include <mutex>
 
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
-#include "tensorflow/lite/optional_debug_tools.h"
-
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/types_c.h>
 #include <opencv2/videoio/videoio_c.h>
 
-#include "loopback.h"
-#include "transpose_conv_bias.h"
+#include "videoio/loopback.h"
+#include "lib/libbackscrub.h"
 
 // Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
 // http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).
@@ -104,42 +99,6 @@ cv::Mat alpha_blend(cv::Mat srca, cv::Mat srcb, cv::Mat mask) {
 	return out;
 }
 
-// Tensorflow Lite helper functions
-using namespace tflite;
-
-#define TFLITE_MINIMAL_CHECK(x)                              \
-  if (!(x)) {                                                \
-	fprintf(stderr, "Error at %s:%d\n", __FILE__, __LINE__); \
-	exit(1);                                                 \
-  }
-
-std::unique_ptr<Interpreter> interpreter;
-
-cv::Mat getTensorMat(int tnum, int debug) {
-
-	TfLiteType t_type = interpreter->tensor(tnum)->type;
-	TFLITE_MINIMAL_CHECK(t_type == kTfLiteFloat32);
-
-	TfLiteIntArray* dims = interpreter->tensor(tnum)->dims;
-	if (debug) for (int i = 0; i < dims->size; i++) printf("tensor #%d: %d\n",tnum,dims->data[i]);
-	TFLITE_MINIMAL_CHECK(dims->data[0] == 1);
-
-	int h = dims->data[1];
-	int w = dims->data[2];
-	int c = dims->data[3];
-
-	float* p_data = interpreter->typed_tensor<float>(tnum);
-	TFLITE_MINIMAL_CHECK(p_data != nullptr);
-
-	return cv::Mat(h,w,CV_32FC(c),p_data);
-}
-
-// deeplabv3 classes
-const std::vector<std::string> labels = { "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "dining table", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv" };
-// label number of "person" for DeepLab v3+ model
-const size_t cnum = labels.size();
-const size_t pers = std::distance(labels.begin(), std::find(labels.begin(),labels.end(),"person"));
-
 // timing helpers
 typedef std::chrono::high_resolution_clock::time_point timestamp_t;
 typedef struct {
@@ -175,39 +134,6 @@ typedef struct {
 	std::mutex lock;
 } capinfo_t;
 
-enum class modeltype_t {
-	Unknown,
-	BodyPix,
-	DeepLab,
-	GoogleMeetSegmentation,
-	MLKitSelfie,
-};
-
-struct normalization_t {
-	float scaling;
-	float offset;
-};
-
-typedef struct {
-	const char *modelname;
-	modeltype_t modeltype;
-	normalization_t norm;
-	size_t threads;
-	size_t width;
-	size_t height;
-	int debug;
-	std::unique_ptr<tflite::FlatBufferModel> model;
-	cv::Mat input;
-	cv::Mat output;
-	cv::Rect roidim;
-	cv::Mat mask;
-	cv::Mat mroi;
-	cv::Mat raw;
-	cv::Mat ofinal;
-	cv::Size blur;
-	float ratio;
-} calcinfo_t;
-
 // capture thread function
 void grab_thread(capinfo_t *ci) {
 	bool done = false;
@@ -231,157 +157,13 @@ void grab_thread(capinfo_t *ci) {
 	}
 }
 
-modeltype_t get_modeltype(const char* modelname) {
-	if (strstr(modelname, "body-pix")) {
-		return modeltype_t::BodyPix;
-	}
-	else if (strstr(modelname, "deeplab")) {
-		return modeltype_t::DeepLab;
-	}
-	else if (strstr(modelname, "segm_")) {
-		return modeltype_t::GoogleMeetSegmentation;
-	}
-	else if (strstr(modelname, "selfie")) {
-		return modeltype_t::MLKitSelfie;
-	}
-	return modeltype_t::Unknown;
-}
+// timing callbacks
+void onprep(void *ctx) { ((timinginfo_t *)ctx)->prepns=timestamp(); }
+void oninfer(void *ctx) { ((timinginfo_t *)ctx)->tfltns=timestamp(); }
+void onmask(void *ctx) { ((timinginfo_t *)ctx)->maskns=timestamp(); }
 
-normalization_t get_normalization(modeltype_t type) {
-	// TODO: This should be read out from actual mode metadata instead
-	switch (type) {
-		case modeltype_t::DeepLab:
-			return normalization_t{.scaling = 1/127.5, .offset = -1};
-		case modeltype_t::BodyPix:
-		case modeltype_t::GoogleMeetSegmentation:
-		case modeltype_t::MLKitSelfie:
-		case modeltype_t::Unknown:
-		default:
-			return normalization_t{.scaling = 1/255.0, .offset = 0};
-	}
-}
-
-void init_tensorflow(calcinfo_t &info) {
-	// Load model
-	info.model = tflite::FlatBufferModel::BuildFromFile(info.modelname);
-	TFLITE_MINIMAL_CHECK(info.model != nullptr);
-
-	// Build the interpreter
-	tflite::ops::builtin::BuiltinOpResolver resolver;
-	// custom op for Google Meet network
-	resolver.AddCustom("Convolution2DTransposeBias", mediapipe::tflite_operations::RegisterConvolution2DTransposeBias());
-	InterpreterBuilder builder(*info.model, resolver);
-	builder(&interpreter);
-	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
-
-	// Allocate tensor buffers.
-	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
-
-	// set interpreter params
-	interpreter->SetNumThreads(info.threads);
-	interpreter->SetAllowFp16PrecisionForFp32(true);
-
-	// get input and output tensor as cv::Mat
-	info.input = getTensorMat(interpreter->inputs ()[0],info.debug);
-	info.output = getTensorMat(interpreter->outputs()[0],info.debug);
-	info.ratio = (float)info.input.cols/(float) info.input.rows;
-
-	// initialize mask and square ROI in center
-	info.roidim = cv::Rect((info.width-info.height/info.ratio)/2,0,info.height/info.ratio,info.height);
-	info.mask = cv::Mat::ones(info.height,info.width,CV_8UC1)*255;
-	info.mroi = info.mask(info.roidim);
-
-	// mask blurring size
-	info.blur = cv::Size(5,5);
-
-	// create Mat for small mask
-	info.ofinal = cv::Mat(info.output.rows,info.output.cols,CV_8UC1);
-}
-
-void calc_mask(calcinfo_t &info, timinginfo_t &ti) {
-	// map ROI
-	cv::Mat roi = info.raw(info.roidim);
-
-	// resize ROI to input size
-	cv::Mat in_u8_bgr, in_u8_rgb;
-	cv::resize(roi,in_u8_bgr,cv::Size(info.input.cols,info.input.rows));
-	cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
-	// TODO: can convert directly to float?
-
-	// bilateral filter to reduce noise
-	if (1) {
-		cv::Mat filtered;
-		cv::bilateralFilter(in_u8_rgb,filtered,5,100.0,100.0);
-		in_u8_rgb = filtered;
-	}
-
-	// convert to float and normalize to values expected by model
-	in_u8_rgb.convertTo(info.input,CV_32FC3,info.norm.scaling,info.norm.offset);
-	ti.prepns=timestamp();
-
-	// Run inference
-	TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
-	ti.tfltns=timestamp();
-
-	float* tmp = (float*)info.output.data;
-	uint8_t* out = (uint8_t*)info.ofinal.data;
-
-	switch (info.modeltype) {
-		case modeltype_t::DeepLab:
-			// find class with maximum probability
-			for (unsigned int n = 0; n < info.output.total(); n++) {
-				float maxval = -10000; size_t maxpos = 0;
-				for (size_t i = 0; i < cnum; i++) {
-					if (tmp[n*cnum+i] > maxval) {
-						maxval = tmp[n*cnum+i];
-						maxpos = i;
-					}
-				}
-				// set mask to 0 where class == person
-				uint8_t val = (maxpos==pers ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
-			}
-			break;
-		case modeltype_t::BodyPix:
-		case modeltype_t::MLKitSelfie:
-			// threshold probability
-			for (unsigned int n = 0; n < info.output.total(); n++) {
-				// FIXME: hardcoded threshold
-				uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
-			}
-			break;
-		case modeltype_t::GoogleMeetSegmentation:
-			/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
-			 * tensor for the light model with masks for background
-			 * (channel 0) and person (channel 1) where values are in
-			 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
-			 * softmax across both channels to yield foreground
-			 * probability in [0.0, 1.0]. */
-			for (unsigned int n = 0; n < info.output.total(); n++) {
-				float exp0 = expf(tmp[2*n  ]);
-				float exp1 = expf(tmp[2*n+1]);
-				float p0 = exp0 / (exp0+exp1);
-				float p1 = exp1 / (exp0+exp1);
-				uint8_t val = (p0 < p1 ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
-			}
-			break;
-		case modeltype_t::Unknown:
-			fprintf(stderr, "Unknown model type\n");
-			break;
-	}
-	ti.maskns=timestamp();
-
-	// scale up into full-sized mask
-	cv::Mat tmpbuf;
-	cv::resize(info.ofinal,tmpbuf,cv::Size(info.raw.rows/info.ratio,info.raw.rows));
-
-	// blur at full size for maximum smoothness
-	cv::blur(tmpbuf,info.mroi,info.blur);
-}
-
-bool is_number(const std::string &s) {
+// let's do this!
+static bool is_number(const std::string &s) {
   return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
 }
 
@@ -446,9 +228,9 @@ int main(int argc, char* argv[]) {
 			}
 		} else if (strncmp(argv[arg], "-p", 2)==0) {
 			if (hasArgument) {
-				string option = argv[++arg];
-				string key = option.substr(0, option.find(":"));
-				string value = option.substr(option.find(":")+1);
+				std::string option = argv[++arg];
+				std::string key = option.substr(0, option.find(":"));
+				std::string value = option.substr(option.find(":")+1);
 				if (key == "bgblur") {
 					if (is_number(value)) {
 					blur_strength = std::stoi(value);
@@ -559,7 +341,10 @@ int main(int argc, char* argv[]) {
 	}
 
 	cv::VideoCapture cap(ccam, CV_CAP_V4L2);
-	TFLITE_MINIMAL_CHECK(cap.isOpened());
+	if(!cap.isOpened()) {
+		perror("failed to open video device");
+		exit(1);
+	}
 
 	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
 	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
@@ -567,14 +352,9 @@ int main(int argc, char* argv[]) {
 		cap.set(CV_CAP_PROP_FOURCC, fourcc);
 	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
 
-	auto modeltype = get_modeltype(modelname);
-	auto norm = get_normalization(modeltype);
-	if (modeltype_t::Unknown == modeltype) {
-		fprintf(stderr, "Unknown model type '%s'.\n", modelname);
+	void *maskctx = bs_maskgen_new(modelname, threads, width, height, nullptr, onprep, oninfer, onmask, &ti);
+	if (!maskctx)
 		exit(1);
-	}
-	calcinfo_t calcinfo = { modelname, modeltype, norm, threads, width, height, debug };
-	init_tensorflow(calcinfo);
 
 	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
 	cv::Mat buf1;
@@ -603,41 +383,48 @@ int main(int argc, char* argv[]) {
 			capinfo.raw = tmat;
 		}
 		// we can now guarantee capinfo.raw will remain unchanged while we process it..
-		calcinfo.raw = *capinfo.raw;
+		cv::Mat raw = *capinfo.raw;
 		ti.copyns=timestamp();
-		if (calcinfo.raw.rows == 0 || calcinfo.raw.cols == 0) continue; // sanity check
+		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
 		if (blur_strength) {
-			calcinfo.raw.copyTo(bg);
+			raw.copyTo(bg);
 			cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
 		}
 
 		if (filterActive) {
 			// do background detection magic
-			calc_mask(calcinfo, ti);
+			cv::Mat mask;
+			if(!bs_maskgen_process(maskctx, raw, mask)) {
+				fprintf(stderr, "failed to process video frame\n");
+				exit(1);
+			}
 
 			// alpha blend background over foreground using mask
-			calcinfo.raw = alpha_blend(bg, calcinfo.raw, calcinfo.mask);
+			raw = alpha_blend(bg, raw, mask);
 		} else {
 			// fix up timing values
 			ti.maskns=ti.tfltns=ti.prepns=ti.copyns;
 		}
 
 		if (flipHorizontal && flipVertical) {
-			cv::flip(calcinfo.raw,calcinfo.raw,-1);
+			cv::flip(raw,raw,-1);
 		} else if (flipHorizontal) {
-			cv::flip(calcinfo.raw,calcinfo.raw,1);
+			cv::flip(raw,raw,1);
 		} else if (flipVertical) {
-			cv::flip(calcinfo.raw,calcinfo.raw,0);
+			cv::flip(raw,raw,0);
 		}
 		ti.postns=timestamp();
 
 		// write frame to v4l2loopback as YUYV
-		calcinfo.raw = convert_rgb_to_yuyv(calcinfo.raw);
-		int framesize = calcinfo.raw.step[0]*calcinfo.raw.rows;
+		raw = convert_rgb_to_yuyv(raw);
+		int framesize = raw.step[0]*raw.rows;
 		while (framesize > 0) {
-			int ret = write(lbfd,calcinfo.raw.data,framesize);
-			TFLITE_MINIMAL_CHECK(ret > 0);
+			int ret = write(lbfd,raw.data,framesize);
+			if(ret <= 0) {
+				perror("writing to loopback device");
+				exit(1);
+			}
 			framesize -= ret;
 		}
 		ti.v4l2ns=timestamp();
@@ -668,7 +455,7 @@ int main(int argc, char* argv[]) {
 		if (debug < 2) continue;
 
 		cv::Mat test;
-		cv::cvtColor(calcinfo.raw,test,CV_YUV2BGR_YUYV);
+		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
 		cv::imshow("DeepSeg " _STR(DEEPSEG_VERSION),test);
 
 		auto keyPress = cv::waitKey(1);
