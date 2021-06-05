@@ -106,7 +106,7 @@ export(TARGETS
 
 install(TARGETS deepseg)
 install(TARGETS backscrub)
-install(FILES libbackscrub.h DESTINATION include/backscrub)
+install(FILES lib/libbackscrub.h DESTINATION include/backscrub)
 install(DIRECTORY models
     DESTINATION ${CMAKE_INSTALL_PREFIX}/share/backscrub
     FILES_MATCHING PATTERN "*.tflite" PATTERN "*.md")
