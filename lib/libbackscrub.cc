@@ -248,7 +248,7 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 	// resize ROI to input size
 	cv::Mat in_u8_bgr, in_u8_rgb;
 	cv::resize(roi,in_u8_bgr,cv::Size(ctx.input.cols,ctx.input.rows));
-	cv::cvtColor(in_u8_bgr,in_u8_rgb,CV_BGR2RGB);
+	cv::cvtColor(in_u8_bgr,in_u8_rgb,cv::COLOR_BGR2RGB);
 	// TODO: can convert directly to float?
 
 	// bilateral filter to reduce noise
