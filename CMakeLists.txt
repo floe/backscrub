@@ -7,6 +7,11 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video videoio hig
 # of weak/strong symbol linking fails in a static library)
 add_compile_definitions(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
 
+# Stop broken xnnpack/FP16 cmake goop from downloading PSimd to our source folder!
+# TODO: check once tensorflow is updated post 2.5.0
+set(CONFU_DEPENDENCIES_SOURCE_DIR ${CMAKE_BINARY_DIR})
+set(CONFU_DEPENDENCIES_BINARY_DIR ${CMAKE_BINARY_DIR}/_deps)
+
 # This assumes that tensorflow got checked out as submodule.
 # True, if `git clone` had the additional option `--recursive`.
 add_subdirectory(tensorflow/tensorflow/lite 
