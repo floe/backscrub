@@ -155,4 +155,4 @@ As usual: pull requests welcome.
 
 ## Other links
 
-Firefox preferred formats: https://dxr.mozilla.org/mozilla-central/source/media/webrtc/trunk/webrtc/modules/video_capture/linux/video_capture_linux.cc#142-159
+Firefox preferred formats: https://searchfox.org/mozilla-central/source/third_party/libwebrtc/webrtc/modules/video_capture/linux/video_capture_linux.cc#142-159
