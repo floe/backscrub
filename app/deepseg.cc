@@ -14,8 +14,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/types_c.h>
-#include <opencv2/videoio/videoio_c.h>
+#include <opencv2/videoio/videoio.hpp>
 
 #include "videoio/loopback.h"
 #include "lib/libbackscrub.h"
@@ -52,7 +51,7 @@ int fourCcFromString(const std::string& in)
 // OpenCV helper functions
 cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
 	cv::Mat tmp;
-	cv::cvtColor(input,tmp,CV_RGB2YUV);
+	cv::cvtColor(input,tmp,cv::COLOR_RGB2YUV);
 	std::vector<cv::Mat> yuv;
 	cv::split(tmp,yuv);
 	cv::Mat yuyv(tmp.rows, tmp.cols, CV_8UC2);
@@ -340,17 +339,17 @@ int main(int argc, char* argv[]) {
 		exit(1);
 	}
 
-	cv::VideoCapture cap(ccam, CV_CAP_V4L2);
+	cv::VideoCapture cap(ccam, cv::CAP_V4L2);
 	if(!cap.isOpened()) {
 		perror("failed to open video device");
 		exit(1);
 	}
 
-	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
-	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
+	cap.set(cv::CAP_PROP_FRAME_WIDTH,  width);
+	cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
 	if (fourcc)
-		cap.set(CV_CAP_PROP_FOURCC, fourcc);
-	cap.set(CV_CAP_PROP_CONVERT_RGB, true);
+		cap.set(cv::CAP_PROP_FOURCC, fourcc);
+	cap.set(cv::CAP_PROP_CONVERT_RGB, true);
 
 	void *maskctx = bs_maskgen_new(modelname, threads, width, height, nullptr, onprep, oninfer, onmask, &ti);
 	if (!maskctx)
@@ -455,7 +454,7 @@ int main(int argc, char* argv[]) {
 		if (debug < 2) continue;
 
 		cv::Mat test;
-		cv::cvtColor(raw,test,CV_YUV2BGR_YUYV);
+		cv::cvtColor(raw,test,cv::COLOR_YUV2BGR_YUYV);
 		cv::imshow("DeepSeg " _STR(DEEPSEG_VERSION),test);
 
 		auto keyPress = cv::waitKey(1);
