@@ -24,7 +24,6 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/types_c.h>
 #include <opencv2/videoio/videoio_c.h>
 
 #include <vector>
@@ -68,7 +67,7 @@ void gl_init_texture() {
 void gl_update_texture() {
 	cv::Mat pic,alpha;
 	cap.read(pic);
-	cv::cvtColor(pic,alpha,CV_YUV2RGBA_YUYV);
+	cv::cvtColor(pic,alpha,cv::COLOR_YUV2RGBA_YUYV);
 
 	uint32_t* data = (uint32_t*)(alpha.data);
 	for (size_t i = 0; i < alpha.total(); i++) {
@@ -178,13 +177,13 @@ int main(int argc, char* argv[]) {
 
 	gl_init_texture();
 
-	cap = cv::VideoCapture(0, CV_CAP_V4L2);
+	cap = cv::VideoCapture(0, cv::CAP_V4L2);
 	if (!cap.isOpened()) { printf("unable to open camera\n"); exit(1); }
 
-	cap.set(CV_CAP_PROP_FRAME_WIDTH,  width);
-	cap.set(CV_CAP_PROP_FRAME_HEIGHT, height);
-	cap.set(CV_CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
-	cap.set(CV_CAP_PROP_CONVERT_RGB, false);
+	cap.set(cv::CAP_PROP_FRAME_WIDTH,  width);
+	cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+	cap.set(cv::CAP_PROP_FOURCC, *((uint32_t*)"YUYV"));
+	cap.set(cv::CAP_PROP_CONVERT_RGB, false);
 
 	int isUserWantsWindowToClose = 0;
 	int isRedraw = 1;
