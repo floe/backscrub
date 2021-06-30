@@ -145,6 +145,99 @@ static bool is_number(const std::string &s) {
   return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
 }
 
+class CalcMask final {
+protected:
+	enum class thread_state { INIT, RUNNING, DONE };
+	volatile thread_state state;
+	void *maskctx;
+	// buffers
+	cv::Mat mask1;
+	cv::Mat mask2;
+	cv::Mat *mask_current;
+	cv::Mat *mask_out;
+	cv::Mat frame1;
+	cv::Mat frame2;
+	cv::Mat *frame_current;
+	cv::Mat *frame_next;
+	// All mutexes need to come before the thread
+	std::mutex lock_frame;
+	std::mutex lock_mask;
+	std::condition_variable condition_new_frame;
+	bool new_frame;
+	bool new_mask;
+
+	std::thread thread; // Must be after state and all relevant mutexes, because of initialization order)
+
+	void run() {
+		cv::Mat *raw_tmp;
+
+		while(thread_state::INIT == this->state)
+			usleep(1000); // Wait for constructor to complete initialization
+
+		while(thread_state::RUNNING == this->state) {
+			/* actual handling */
+			{
+				std::unique_lock<std::mutex> hold(lock_frame);
+				while (!new_frame) {
+					condition_new_frame.wait(hold);
+				}
+
+				// change frame buffer pointer
+				new_frame = false;
+				raw_tmp = frame_next;
+				frame_next = frame_current;
+				frame_current = raw_tmp;
+			}
+			if(!bs_maskgen_process(maskctx, *frame_current, *mask_current)) {
+				fprintf(stderr, "failed to process video frame\n");
+				exit(1);
+			}
+			{
+				std::unique_lock<std::mutex> hold(lock_mask);
+				raw_tmp = mask_out;
+				mask_out = mask_current;
+				mask_current = raw_tmp;
+				new_mask = true;
+			}
+		}
+	}
+
+public:
+	CalcMask(void *maskctx) :
+		state{thread_state::INIT},
+		thread{&CalcMask::run, this} {
+		// Do all other initialization …
+		this->maskctx = maskctx;
+		frame_next = &frame1;
+		frame_current = &frame2;
+		mask_current = &mask1;
+		mask_out = &mask2;
+		new_frame = false;
+		new_mask = false;
+		state = thread_state::RUNNING;
+	}
+
+	~CalcMask() {
+		state = thread_state::DONE;
+		thread.join();
+	}
+
+	void set_input_frame(cv::Mat &frame) {
+		std::lock_guard<std::mutex> hold(lock_frame);
+		*frame_next = frame.clone();
+		new_frame = true;
+		condition_new_frame.notify_all();
+	}
+
+	void get_output_mask(cv::Mat &out) {
+		if (new_mask) {
+			std::lock_guard<std::mutex> hold(lock_mask);
+			out = mask_out->clone();
+			new_mask = false;
+		}
+	}
+};
+
 int main(int argc, char* argv[]) {
 
 	printf("deepseg version %s\n", _STR(DEEPSEG_VERSION));
@@ -334,8 +427,9 @@ int main(int argc, char* argv[]) {
 	if (!maskctx)
 		exit(1);
 
-	cv::Mat mask;
+	cv::Mat mask(height, width, CV_8U);
 	cv::Mat raw;
+	CalcMask ai(maskctx);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -349,6 +443,7 @@ int main(int argc, char* argv[]) {
 		cap.grab();
 		// copy new frame to buffer
 		cap.retrieve(raw);
+		ai.set_input_frame(raw);
 
 		ti.copyns=timestamp();
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
@@ -360,11 +455,7 @@ int main(int argc, char* argv[]) {
 
 		if (filterActive) {
 			// do background detection magic
-			cv::Mat mask;
-			if(!bs_maskgen_process(maskctx, raw, mask)) {
-				fprintf(stderr, "failed to process video frame\n");
-				exit(1);
-			}
+			ai.get_output_mask(mask);
 
 			// alpha blend background over foreground using mask
 			raw = alpha_blend(bg, raw, mask);
