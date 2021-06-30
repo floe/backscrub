@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -133,29 +134,6 @@ typedef struct {
 	timinginfo_t *pti;
 	std::mutex lock;
 } capinfo_t;
-
-// capture thread function
-void grab_thread(capinfo_t *ci) {
-	bool done = false;
-	// while we have a grab frame.. grab frames
-	while (!done) {
-		timestamp_t ts = timestamp();
-		ci->cap->grab();
-		long ns = diffnanosecs(timestamp(),ts);
-		{
-			std::lock_guard<std::mutex> hold(ci->lock);
-			ci->pti->grabns = ns;
-			if (ci->grab!=NULL) {
-				ts = timestamp();
-				ci->cap->retrieve(*ci->grab);
-				ci->pti->retrns = diffnanosecs(timestamp(),ts);
-			} else {
-				done = true;
-			}
-			ci->cnt++;
-		}
-	}
-}
 
 // timing callbacks
 void onprep(void *ctx) { ((timinginfo_t *)ctx)->prepns=timestamp(); }
@@ -356,12 +334,8 @@ int main(int argc, char* argv[]) {
 	if (!maskctx)
 		exit(1);
 
-	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
-	cv::Mat buf1;
-	cv::Mat buf2;
-	int64 oldcnt = 0;
-	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, &ti };
-	std::thread grabber(grab_thread, &capinfo);
+	cv::Mat mask;
+	cv::Mat raw;
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -369,21 +343,13 @@ int main(int argc, char* argv[]) {
 
 	// mainloop
 	for(bool running = true; running; ) {
-		// wait for next frame
-		while (capinfo.cnt == oldcnt) usleep(10000);
-		oldcnt = capinfo.cnt;
 		ti.waitns=timestamp();
 
-		// switch buffer pointers in capture thread
-		{
-			std::lock_guard<std::mutex> hold(capinfo.lock);
-			ti.lockns=timestamp();
-			cv::Mat *tmat = capinfo.grab;
-			capinfo.grab = capinfo.raw;
-			capinfo.raw = tmat;
-		}
-		// we can now guarantee capinfo.raw will remain unchanged while we process it..
-		cv::Mat raw = *capinfo.raw;
+		// grab new frame from cam
+		cap.grab();
+		// copy new frame to buffer
+		cap.retrieve(raw);
+
 		ti.copyns=timestamp();
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
@@ -474,12 +440,6 @@ int main(int argc, char* argv[]) {
 				break;
 		}
 	}
-
-	{
-		std::lock_guard<std::mutex> hold(capinfo.lock);
-		capinfo.grab = NULL;
-	}
-	grabber.join();
 
 	printf("\n");
 	return 0;
