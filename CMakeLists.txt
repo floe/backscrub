@@ -1,10 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 project(backscrub CXX)
 
+# allow override of Tensorflow location
 if(NOT DEFINED TENSORFLOW)
   set(TENSORFLOW tensorflow)
+  set(TF_CHECKOUT true)
 endif()
 
+# find Git and use it to get backscrub version
 find_package(Git)
 if(GIT_FOUND)
   execute_process(
@@ -19,7 +22,20 @@ message("Version: ${DEEPSEG_VERSION}")
 # always build PIC everywhere
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
+# use local platform OpenCV libraries
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video videoio highgui)
+
+# use .gitmodules defined Tensorflow version unless a path was provided
+if (TF_CHECKOUT)
+  if (GIT_FOUND)
+    message(STATUS "Updating Tensorflow source")
+    execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive)
+  else()
+    message(FATAL_ERROR "Git not found. Unable to checkout required Tensorflow version")
+  endif()
+else()
+  message(STATUS "Using specified Tensorflow: ${TENSORFLOW}")
+endif(TF_CHECKOUT)
 
 # force compilation of XNNPACK delegate (without this the too clever-by-half use
 # of weak/strong symbol linking fails in a static library)
@@ -30,11 +46,11 @@ add_compile_definitions(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
 set(CONFU_DEPENDENCIES_SOURCE_DIR ${CMAKE_BINARY_DIR})
 set(CONFU_DEPENDENCIES_BINARY_DIR ${CMAKE_BINARY_DIR}/_deps)
 
-# This assumes that tensorflow got checked out as submodule.
-# True, if `git clone` had the additional option `--recursive`.
+# pull in Tensorflow Lite source build
 add_subdirectory(${TENSORFLOW}/tensorflow/lite
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
 
+# build backscrub code
 add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION})
 include_directories(BEFORE .)
 
@@ -109,6 +125,7 @@ export(TARGETS
   ${BACKSCRUB_DEPS}
   FILE BackscrubTargets.cmake)
 
+# installation names for library, header and models
 install(TARGETS deepseg)
 install(TARGETS backscrub)
 install(FILES lib/libbackscrub.h DESTINATION include/backscrub)
