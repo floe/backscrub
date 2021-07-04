@@ -231,19 +231,9 @@ public:
 			 size_t height) :
 		state{thread_state::INIT},
 		thread{&CalcMask::run, this} {
-		maskctx = bs_maskgen_new(
-					modelname,
-					threads,
-					width,
-					height,
-					nullptr,
-					onprep,
-					oninfer,
-					onmask,
-					this
-					);
+		maskctx = bs_maskgen_new(modelname,threads,width,height,nullptr,onprep,oninfer,onmask,this);
 		if (!maskctx)
-			exit(1);
+			throw "Could not create mask context";
 
 		// Do all other initialization …
 		frame_next = &frame1;
@@ -277,7 +267,7 @@ public:
 	}
 };
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
 
 	printf("deepseg version %s\n", _STR(DEEPSEG_VERSION));
 	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
@@ -530,7 +520,7 @@ int main(int argc, char* argv[]) {
 
 		// timing details..
 		printf("main [grab:%9ld retr:%9ld copy:%9ld prep:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f] ai: [wait:%9ld prep:%9ld tflt:%9ld mask:%9ld FPS: %5.2f] \e[K\r",
-			diffnanosecs(ti.grabns, ti.lastns),
+			diffnanosecs(ti.grabns,ti.lastns),
 			diffnanosecs(ti.retrns,ti.grabns),
 			diffnanosecs(ti.copyns,ti.retrns),
 			diffnanosecs(ti.prepns,ti.copyns),
@@ -571,4 +561,7 @@ int main(int argc, char* argv[]) {
 
 	printf("\n");
 	return 0;
+} catch(const char* msg) {
+	fprintf(stderr, "Error: %s\n", msg);
+	return 1;
 }
