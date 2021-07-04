@@ -50,6 +50,21 @@ struct backscrub_ctx_t {
 };
 
 // Debug helper
+#ifdef WIN32
+// https://stackoverflow.com/questions/40159892/using-asprintf-on-windows
+static int vasprintf(char **msgp, const char *fmt, va_list ap) {
+	int len = _vscprintf(fmt, ap);
+	if (len<=0)
+		return len;
+	*msgp = (char *)malloc(len+1);
+	len = vsprintf_s(*msgp, len+1, fmt, ap);
+	if (len<=0) {
+		free(*msgp);
+		return len;
+	}
+	return len;
+}
+#endif
 static void _dbg(backscrub_ctx_t &ctx, const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
@@ -112,16 +127,20 @@ static modeltype_t get_modeltype(const char* modelname) {
 
 static normalization_t get_normalization(modeltype_t type) {
 	// TODO: This should be read out from actual model metadata instead
+	normalization_t rv = {0};
 	switch (type) {
 		case modeltype_t::DeepLab:
-			return normalization_t{.scaling = 1/127.5, .offset = -1};
+			rv.scaling = 1/127.5; rv.offset = -1;
+			break;
 		case modeltype_t::BodyPix:
 		case modeltype_t::GoogleMeetSegmentation:
 		case modeltype_t::MLKitSelfie:
 		case modeltype_t::Unknown:
 		default:
-			return normalization_t{.scaling = 1/255.0, .offset = 0};
+			rv.scaling = 1/255.0; rv.offset = 0;
+			break;
 	}
+	return rv;
 }
 
 // deeplabv3 classes
