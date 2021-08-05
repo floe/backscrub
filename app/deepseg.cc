@@ -121,21 +121,7 @@ long diffnanosecs(timestamp_t t1, timestamp_t t2) {
 	return std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t2).count();
 }
 
-// threaded capture shared state
-typedef struct {
-	cv::VideoCapture *cap;
-	cv::Mat *grab;
-	cv::Mat *raw;
-	int64 cnt;
-	timinginfo_t *pti;
-	std::mutex lock;
-} capinfo_t;
-
-// let's do this!
-static bool is_number(const std::string &s) {
-  return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
-}
-
+// encapsulation of mask calculation logic and threading
 class CalcMask final {
 protected:
 	enum class thread_state { RUNNING, DONE };
@@ -259,6 +245,10 @@ public:
 		}
 	}
 };
+
+static bool is_number(const std::string &s) {
+  return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
+}
 
 int main(int argc, char* argv[]) try {
 
