@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -103,17 +104,14 @@ typedef std::chrono::high_resolution_clock::time_point timestamp_t;
 typedef struct {
 	timestamp_t bootns;
 	timestamp_t lastns;
-	timestamp_t waitns;
 	timestamp_t lockns;
 	timestamp_t copyns;
 	timestamp_t prepns;
-	timestamp_t tfltns;
 	timestamp_t maskns;
 	timestamp_t postns;
 	timestamp_t v4l2ns;
-	// these are already converted to ns
-	long grabns;
-	long retrns;
+	timestamp_t grabns;
+	timestamp_t retrns;
 } timinginfo_t;
 
 timestamp_t timestamp() {
@@ -133,40 +131,142 @@ typedef struct {
 	std::mutex lock;
 } capinfo_t;
 
-// capture thread function
-void grab_thread(capinfo_t *ci) {
-	bool done = false;
-	// while we have a grab frame.. grab frames
-	while (!done) {
-		timestamp_t ts = timestamp();
-		ci->cap->grab();
-		long ns = diffnanosecs(timestamp(),ts);
-		{
-			std::lock_guard<std::mutex> hold(ci->lock);
-			ci->pti->grabns = ns;
-			if (ci->grab!=NULL) {
-				ts = timestamp();
-				ci->cap->retrieve(*ci->grab);
-				ci->pti->retrns = diffnanosecs(timestamp(),ts);
-			} else {
-				done = true;
-			}
-			ci->cnt++;
-		}
-	}
-}
-
-// timing callbacks
-void onprep(void *ctx) { ((timinginfo_t *)ctx)->prepns=timestamp(); }
-void oninfer(void *ctx) { ((timinginfo_t *)ctx)->tfltns=timestamp(); }
-void onmask(void *ctx) { ((timinginfo_t *)ctx)->maskns=timestamp(); }
-
 // let's do this!
 static bool is_number(const std::string &s) {
   return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
 }
 
-int main(int argc, char* argv[]) {
+class CalcMask final {
+protected:
+	enum class thread_state { INIT, RUNNING, DONE };
+	volatile thread_state state;
+	void *maskctx;
+	// buffers
+	cv::Mat mask1;
+	cv::Mat mask2;
+	cv::Mat *mask_current;
+	cv::Mat *mask_out;
+	cv::Mat frame1;
+	cv::Mat frame2;
+	cv::Mat *frame_current;
+	cv::Mat *frame_next;
+	// All mutexes need to come before the thread
+	std::mutex lock_frame;
+	std::mutex lock_mask;
+	std::condition_variable condition_new_frame;
+	bool new_frame;
+	bool new_mask;
+
+	std::thread thread; // Must be after state and all relevant mutexes, because of initialization order)
+
+	void run() {
+		cv::Mat *raw_tmp;
+		timestamp_t t1;
+
+		while(thread_state::INIT == this->state)
+			usleep(1000); // Wait for constructor to complete initialization
+
+		while(thread_state::RUNNING == this->state) {
+			t0 = timestamp();
+			/* actual handling */
+			{
+				std::unique_lock<std::mutex> hold(lock_frame);
+				while (!new_frame) {
+					condition_new_frame.wait(hold);
+				}
+
+				// change frame buffer pointer
+				new_frame = false;
+				raw_tmp = frame_next;
+				frame_next = frame_current;
+				frame_current = raw_tmp;
+			}
+			waitns=diffnanosecs(timestamp(), t0);
+			t0 = timestamp();
+			t1 = timestamp();
+			if(!bs_maskgen_process(maskctx, *frame_current, *mask_current)) {
+				fprintf(stderr, "failed to process video frame\n");
+				exit(1);
+			}
+			{
+				std::unique_lock<std::mutex> hold(lock_mask);
+				raw_tmp = mask_out;
+				mask_out = mask_current;
+				mask_current = raw_tmp;
+				new_mask = true;
+			}
+			loopns = diffnanosecs(timestamp(), t1);
+		}
+	}
+
+	// timing callbacks
+	static void onprep(void *ctx) {
+		CalcMask *cls = (CalcMask *)ctx;
+		cls->prepns=diffnanosecs(timestamp(), cls->t0);
+		cls->t0 = timestamp();
+	}
+	static void oninfer(void *ctx) {
+		CalcMask *cls = (CalcMask *)ctx;
+		cls->tfltns=diffnanosecs(timestamp(), cls->t0);
+		cls->t0 = timestamp();
+	}
+	static void onmask(void *ctx) {
+		CalcMask *cls = (CalcMask *)ctx;
+		cls->maskns=diffnanosecs(timestamp(), cls->t0);
+		cls->t0 = timestamp();
+	}
+
+public:
+	timestamp_t t0;
+	long waitns;
+	long prepns;
+	long tfltns;
+	long maskns;
+	long loopns;
+
+	CalcMask(const char *modelname,
+			 size_t threads,
+			 size_t width,
+			 size_t height) :
+		state{thread_state::INIT},
+		thread{&CalcMask::run, this} {
+		maskctx = bs_maskgen_new(modelname,threads,width,height,nullptr,onprep,oninfer,onmask,this);
+		if (!maskctx)
+			throw "Could not create mask context";
+
+		// Do all other initialization …
+		frame_next = &frame1;
+		frame_current = &frame2;
+		mask_current = &mask1;
+		mask_out = &mask2;
+		new_frame = false;
+		new_mask = false;
+		state = thread_state::RUNNING;
+	}
+
+	~CalcMask() {
+		state = thread_state::DONE;
+		thread.join();
+		bs_maskgen_delete(maskctx);
+	}
+
+	void set_input_frame(cv::Mat &frame) {
+		std::lock_guard<std::mutex> hold(lock_frame);
+		*frame_next = frame.clone();
+		new_frame = true;
+		condition_new_frame.notify_all();
+	}
+
+	void get_output_mask(cv::Mat &out) {
+		if (new_mask) {
+			std::lock_guard<std::mutex> hold(lock_mask);
+			out = mask_out->clone();
+			new_mask = false;
+		}
+	}
+};
+
+int main(int argc, char* argv[]) try {
 
 	printf("deepseg version %s\n", _STR(DEEPSEG_VERSION));
 	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
@@ -351,16 +451,9 @@ int main(int argc, char* argv[]) {
 		cap.set(cv::CAP_PROP_FOURCC, fourcc);
 	cap.set(cv::CAP_PROP_CONVERT_RGB, true);
 
-	void *maskctx = bs_maskgen_new(modelname, threads, width, height, nullptr, onprep, oninfer, onmask, &ti);
-	if (!maskctx)
-		exit(1);
-
-	// kick off separate grabber thread to keep OpenCV/FFMpeg happy (or it lags badly)
-	cv::Mat buf1;
-	cv::Mat buf2;
-	int64 oldcnt = 0;
-	capinfo_t capinfo = { &cap, &buf1, &buf2, 0, &ti };
-	std::thread grabber(grab_thread, &capinfo);
+	cv::Mat mask(height, width, CV_8U);
+	cv::Mat raw;
+	CalcMask ai(modelname, threads, width, height);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -368,43 +461,31 @@ int main(int argc, char* argv[]) {
 
 	// mainloop
 	for(bool running = true; running; ) {
-		// wait for next frame
-		while (capinfo.cnt == oldcnt) usleep(10000);
-		oldcnt = capinfo.cnt;
-		ti.waitns=timestamp();
-
-		// switch buffer pointers in capture thread
-		{
-			std::lock_guard<std::mutex> hold(capinfo.lock);
-			ti.lockns=timestamp();
-			cv::Mat *tmat = capinfo.grab;
-			capinfo.grab = capinfo.raw;
-			capinfo.raw = tmat;
-		}
-		// we can now guarantee capinfo.raw will remain unchanged while we process it..
-		cv::Mat raw = *capinfo.raw;
+		// grab new frame from cam
+		cap.grab();
+		ti.grabns=timestamp();
+		// copy new frame to buffer
+		cap.retrieve(raw);
+		ti.retrns=timestamp();
+		ai.set_input_frame(raw);
 		ti.copyns=timestamp();
+
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
 		if (blur_strength) {
 			raw.copyTo(bg);
 			cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
 		}
+		ti.prepns = timestamp();
 
 		if (filterActive) {
 			// do background detection magic
-			cv::Mat mask;
-			if(!bs_maskgen_process(maskctx, raw, mask)) {
-				fprintf(stderr, "failed to process video frame\n");
-				exit(1);
-			}
+			ai.get_output_mask(mask);
 
 			// alpha blend background over foreground using mask
 			raw = alpha_blend(bg, raw, mask);
-		} else {
-			// fix up timing values
-			ti.maskns=ti.tfltns=ti.prepns=ti.copyns;
 		}
+		ti.maskns = timestamp();
 
 		if (flipHorizontal && flipVertical) {
 			cv::flip(raw,raw,-1);
@@ -437,18 +518,21 @@ int main(int argc, char* argv[]) {
 		}
 
 		// timing details..
-		printf("wait:%9ld lock:%9ld [grab:%9ld retr:%9ld] copy:%9ld prep:%9ld tflt:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f\e[K\r",
-			diffnanosecs(ti.waitns,ti.lastns),
-			diffnanosecs(ti.lockns,ti.waitns),
-			ti.grabns,
-			ti.retrns,
-			diffnanosecs(ti.copyns,ti.lockns),
+		printf("main [grab:%9ld retr:%9ld copy:%9ld prep:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f] ai: [wait:%9ld prep:%9ld tflt:%9ld mask:%9ld FPS: %5.2f] \e[K\r",
+			diffnanosecs(ti.grabns,ti.lastns),
+			diffnanosecs(ti.retrns,ti.grabns),
+			diffnanosecs(ti.copyns,ti.retrns),
 			diffnanosecs(ti.prepns,ti.copyns),
-			diffnanosecs(ti.tfltns,ti.prepns),
-			diffnanosecs(ti.maskns,ti.tfltns),
+			diffnanosecs(ti.maskns,ti.prepns),
 			diffnanosecs(ti.postns,ti.maskns),
 			diffnanosecs(ti.v4l2ns,ti.postns),
-			1e9/diffnanosecs(ti.v4l2ns,ti.lastns));
+			1e9/diffnanosecs(ti.v4l2ns,ti.lastns),
+			ai.waitns,
+			ai.prepns,
+			ai.tfltns,
+			ai.maskns,
+			1e9/ai.loopns
+		);
 		fflush(stdout);
 		ti.lastns = timestamp();
 		if (debug < 2) continue;
@@ -474,12 +558,9 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	{
-		std::lock_guard<std::mutex> hold(capinfo.lock);
-		capinfo.grab = NULL;
-	}
-	grabber.join();
-
 	printf("\n");
 	return 0;
+} catch(const char* msg) {
+	fprintf(stderr, "Error: %s\n", msg);
+	return 1;
 }
