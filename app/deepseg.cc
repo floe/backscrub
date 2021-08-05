@@ -138,9 +138,10 @@ static bool is_number(const std::string &s) {
 
 class CalcMask final {
 protected:
-	enum class thread_state { INIT, RUNNING, DONE };
+	enum class thread_state { RUNNING, DONE };
 	volatile thread_state state;
 	void *maskctx;
+	timestamp_t t0;
 	// buffers
 	cv::Mat mask1;
 	cv::Mat mask2;
@@ -150,24 +151,20 @@ protected:
 	cv::Mat frame2;
 	cv::Mat *frame_current;
 	cv::Mat *frame_next;
-	// All mutexes need to come before the thread
+	// thread synchronisation
 	std::mutex lock_frame;
 	std::mutex lock_mask;
 	std::condition_variable condition_new_frame;
 	bool new_frame;
 	bool new_mask;
-
-	std::thread thread; // Must be after state and all relevant mutexes, because of initialization order)
+	std::thread thread;
 
 	void run() {
 		cv::Mat *raw_tmp;
-		timestamp_t t1;
-
-		while(thread_state::INIT == this->state)
-			usleep(1000); // Wait for constructor to complete initialization
+		timestamp_t tloop;
 
 		while(thread_state::RUNNING == this->state) {
-			t0 = timestamp();
+			tloop = t0 = timestamp();
 			/* actual handling */
 			{
 				std::unique_lock<std::mutex> hold(lock_frame);
@@ -183,7 +180,6 @@ protected:
 			}
 			waitns=diffnanosecs(timestamp(), t0);
 			t0 = timestamp();
-			t1 = timestamp();
 			if(!bs_maskgen_process(maskctx, *frame_current, *mask_current)) {
 				fprintf(stderr, "failed to process video frame\n");
 				exit(1);
@@ -195,7 +191,7 @@ protected:
 				mask_current = raw_tmp;
 				new_mask = true;
 			}
-			loopns = diffnanosecs(timestamp(), t1);
+			loopns = diffnanosecs(timestamp(), tloop);
 		}
 	}
 
@@ -217,7 +213,6 @@ protected:
 	}
 
 public:
-	timestamp_t t0;
 	long waitns;
 	long prepns;
 	long tfltns;
@@ -227,9 +222,7 @@ public:
 	CalcMask(const char *modelname,
 			 size_t threads,
 			 size_t width,
-			 size_t height) :
-		state{thread_state::INIT},
-		thread{&CalcMask::run, this} {
+			 size_t height) {
 		maskctx = bs_maskgen_new(modelname,threads,width,height,nullptr,onprep,oninfer,onmask,this);
 		if (!maskctx)
 			throw "Could not create mask context";
@@ -242,6 +235,7 @@ public:
 		new_frame = false;
 		new_mask = false;
 		state = thread_state::RUNNING;
+		thread = std::thread(&CalcMask::run, this);
 	}
 
 	~CalcMask() {
