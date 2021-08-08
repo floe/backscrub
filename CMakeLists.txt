@@ -12,8 +12,8 @@ find_package(Git)
 if(GIT_FOUND)
   execute_process(
     COMMAND ${GIT_EXECUTABLE} describe --all --long --always --dirty
-       OUTPUT_STRIP_TRAILING_WHITESPACE
-       OUTPUT_VARIABLE DEEPSEG_VERSION)
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    OUTPUT_VARIABLE DEEPSEG_VERSION)
 else()
   set(DEEPSEG_VERSION v0.2.0-no-git)
 endif()
@@ -130,5 +130,5 @@ install(TARGETS deepseg)
 install(TARGETS backscrub)
 install(FILES lib/libbackscrub.h DESTINATION include/backscrub)
 install(DIRECTORY models
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/share/backscrub
-    FILES_MATCHING PATTERN "*.tflite" PATTERN "*.md")
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/share/backscrub
+  FILES_MATCHING PATTERN "*.tflite" PATTERN "*.md")
