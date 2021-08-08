@@ -129,7 +129,9 @@ export(TARGETS
   FILE BackscrubTargets.cmake)
 
 # installation names for library, header and models
+if(NOT WIN32)
 install(TARGETS deepseg)
+endif()
 install(TARGETS backscrub)
 install(FILES lib/libbackscrub.h DESTINATION include/backscrub)
 install(DIRECTORY models
