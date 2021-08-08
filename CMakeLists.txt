@@ -64,6 +64,8 @@ target_link_libraries(backscrub
   opencv_imgproc
 )
 
+# We don't build the Linux-specific wrapper application on Windows
+if(NOT WIN32)
 add_library(videoio
   videoio/loopback.cc)
 
@@ -83,6 +85,7 @@ target_link_libraries(deepseg
   opencv_imgcodecs
   opencv_highgui
 )
+endif()
 
 # Export our library, and all transitive dependencies - sadly Tensorflow Lite's
 # CMakeLists.txt does not export these for us
