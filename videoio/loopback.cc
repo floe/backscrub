@@ -1,3 +1,6 @@
+/* This is licensed software, @see LICENSE file.
+ * Authors - @see AUTHORS file. */
+
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <unistd.h>

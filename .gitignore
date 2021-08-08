@@ -1,36 +1,15 @@
-# Prerequisites
-*.d
+# Output folders
+bin/
+build/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# dotfiles and folders
+.*/
+.*
 
-# Precompiled Headers
-*.gch
-*.pch
+# temporaries
+*~
+*.bak
+*.orig
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-deepseg
+# Model build bits
 models/body-pix/bodypix_*
-tv
