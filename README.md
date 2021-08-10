@@ -6,6 +6,78 @@
 ![Screenshots with my stupid grinning face](images/screenshot.jpg)
 (Credits for the nice backgrounds to [Mary Sabell](https://dribbble.com/shots/4686178-Bauhaus-Poster) and [PhotoFunia](https://photofunia.com/effects/retro-wave))
 
+## Maintainers
+
+  * Phil Ashby (@phlash)
+  * Benny Baumann (@benbe)
+  * Florian Echtler (@floe)
+
+## Building
+
+Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms curl`).
+
+Clone this repository with `git clone --recursive https://github.com/floe/backscrub.git`.
+To speed up the checkout you can additionally pass `--depth=1` to `git clone`.
+This is okay, if you only want to download and build the code, however, for development it is not recommended.
+
+Use `cmake` to build the project: create a subfolder (e.g. `build`), change to that folder and run: `cmake && make -j4` (please replace "4" with the number of your cores).
+
+Alternatively, you can also run `make` to build everything (should also clone and build Tensorflow Lite).
+
+## Usage
+
+First, load the v4l2loopback module (extra settings needed to make Chrome work):
+```
+sudo modprobe v4l2loopback devices=1 max_buffers=2 exclusive_caps=1 card_label="VirtualCam"
+```
+Then, run deepseg (-d -d for full debug, -c for capture device, -v for virtual device):
+```
+./deepseg -d -d -c /dev/video0 -v /dev/video1
+```
+
+Some cameras like a *Logitec Brio* might need to switch the video source to `MJPG` by passing `-f MJPG` in order to allow for higher resolutions.
+
+## Requirements
+
+Tested with the following dependencies:
+
+  - Ubuntu 20.04, x86-64
+    - Linux kernel 5.6 (stock package)
+    - OpenCV 4.2.0 (stock package)
+    - V4L2-Loopback 0.12.5 (stock package)
+    - Tensorflow Lite 2.5.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.5.0/tensorflow/lite))
+  - Ubuntu 18.04.5, x86-64
+    - Linux kernel 4.15 (stock package)
+    - OpenCV 3.2.0 (stock package)
+    - V4L2-Loopback 0.10.0 (stock package)
+    - Tensorflow Lite 2.1.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.1.0/tensorflow/lite))
+  
+Tested with the following software:
+
+  - Firefox 
+    - 90.0.2 (works)
+    - 84.0   (works)
+    - 76.0.1 (works)
+    - 74.0.1 (works)
+  - Skype 
+    - 8.67.0.96 (works)
+    - 8.60.0.76 (works)
+    - 8.58.0.93 (works)
+  - guvcview
+    - 2.0.6 (works with parameter `-c read`)
+    - 2.0.5 (works with parameter `-c read`)
+  - Microsoft Teams
+    - 1.3.00.30857 (works)
+    - 1.3.00.5153 (works)
+  - Chrome
+    - 87.0.4280.88 (works)
+    - 81.0.4044.138 (works)
+  - Zoom - yes, I'm a hypocrite, I tested it with Zoom after all :-)
+    - 5.4.54779.1115 (works)
+    - 5.0.403652.0509 (works)
+
+## Background
+
 In these modern times where everyone is sitting at home and skype-ing/zoom-ing/webrtc-ing all the time, I was a bit annoyed about always showing my messy home office to the world. Skype has a "blur background" feature, but that starts to get boring after a while (and it's less private than I would personally like). Zoom has some background substitution thingy built-in, but I'm not touching that software with a bargepole (and that feature is not available on Linux anyway). So I decided to look into how to roll my own implementation without being dependent on any particular video conferencing software to support this.
 
 This whole shebang involves three main steps with varying difficulty:
@@ -70,84 +142,16 @@ The dataflow through the whole program is roughly as follows:
 
 (*) these are required input parameters for this model
 
-## Requirements
-
-Tested with the following dependencies:
-
-  - Ubuntu 20.04, x86-64
-    - Linux kernel 5.6 (stock package)
-    - OpenCV 4.2.0 (stock package)
-    - V4L2-Loopback 0.12.5 (stock package)
-    - Tensorflow Lite 2.4.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.4.0/tensorflow/lite))
-  - Ubuntu 18.04.5, x86-64
-    - Linux kernel 4.15 (stock package)
-    - OpenCV 3.2.0 (stock package)
-    - V4L2-Loopback 0.10.0 (stock package)
-    - Tensorflow Lite 2.1.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.1.0/tensorflow/lite))
-  
-Tested with the following software:
-
-  - Firefox 
-    - 84.0   (works)
-    - 76.0.1 (works)
-    - 74.0.1 (works)
-  - Skype 
-    - 8.67.0.96 (works)
-    - 8.60.0.76 (works)
-    - 8.58.0.93 (works)
-  - guvcview
-    - 2.0.6 (works with parameter `-c read`)
-    - 2.0.5 (works with parameter `-c read`)
-  - Microsoft Teams
-    - 1.3.00.30857 (works)
-    - 1.3.00.5153 (works)
-  - Chrome
-    - 87.0.4280.88 (works)
-    - 81.0.4044.138 (works)
-  - Zoom - yes, I'm a hypocrite, I tested it with Zoom after all :-)
-    - 5.4.54779.1115 (works)
-    - 5.0.403652.0509 (works)
-
-## Building
-
-Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms curl`).
-
-Clone this repository with `git clone --recursive https://github.com/floe/backscrub.git`.
-To speed up the checkout you can additionally pass `--depth=1` to `git clone`.
-This is okay, if you only want to download and build the code, however, for development it is not recommended.
-
-Run `make` to build everything (should also clone and build Tensorflow Lite).
-Alternatively, you can also use `cmake`. Create a subfolder (e.g. `build`), change to that folder and run: `cmake && make -j4` (please replace "4" with the number of your cores).
-
-If the first part doesn't work:
-  - Clone https://github.com/tensorflow/tensorflow/ repo into `tensorflow/` folder
-  - Checkout tag v2.4.0
-  - run ./tensorflow/lite/tools/make/download_dependencies.sh (only for non-cmake build)
-  - run ./tensorflow/lite/tools/make/build_lib.sh (only for non-cmake build)
-
-## Usage
-
-First, load the v4l2loopback module (extra settings needed to make Chrome work):
-```
-sudo modprobe v4l2loopback devices=1 max_buffers=2 exclusive_caps=1 card_label="VirtualCam"
-```
-Then, run deepseg (-d -d for full debug, -c for capture device, -v for virtual device):
-```
-./deepseg -d -d -c /dev/video0 -v /dev/video1
-```
-
-Some cameras like a *Logitec Brio* might need to switch the video source to `MJPG` by passing `-f MJPG` in order to allow for higher resolutions.
-
 ## Limitations/Extensions
 
 As usual: pull requests welcome.
+
+## Fixed
+  
   - The project name isn't catchy enough. Help me find a nice [backronym](https://en.wikipedia.org/wiki/Backronym).
   - Resolution is currently hardcoded to 640x480 (lowest common denominator).
   - Only works with Linux, because that's what I use.
   - Needs a webcam that can produce raw YUYV data (but extending to the common YUV420 format should be trivial)
-
-## Fixed
-  
   - Should probably do a erosion (+ dilation?) operation on the mask.
   - Background image size needs to match camera resolution (see issue #1).
   - CPU hog: maxes out two cores on my 2.7 GHz i5 machine for just VGA @ 10 FPS. Fixed via Google Meet segmentation model.
