@@ -2,8 +2,6 @@
  * Authors - @see AUTHORS file.
 ==============================================================================*/
 
-// tested against tensorflow lite v2.4.1 (static library)
-
 #include <unistd.h>
 #include <cstdio>
 #include <chrono>
@@ -252,9 +250,9 @@ static bool is_number(const std::string &s) {
 
 int main(int argc, char* argv[]) try {
 
-	printf("deepseg version %s\n", _STR(DEEPSEG_VERSION));
+	printf("backscrub version %s\n", _STR(DEEPSEG_VERSION));
 	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
-	printf("https://github.com/floe/deepbacksub\n");
+	printf("https://github.com/floe/backscrub\n");
 	timinginfo_t ti;
 	ti.bootns = timestamp();
 	int debug  = 0;

@@ -36,7 +36,7 @@ endif
 BIN=bin
 
 # Default target
-all: $(BIN) $(BIN)/deepseg
+all: $(BIN) $(BIN)/backscrub
 
 clean:
 	-rm -rf $(BIN)
@@ -45,7 +45,7 @@ $(BIN):
 	-mkdir -p $(BIN)
 
 # Primary binaries - special deps
-$(BIN)/deepseg: app/deepseg.cc $(BIN)/libbackscrub.a $(BIN)/libvideoio.a $(TFLIBS)/libtensorflow-lite.a
+$(BIN)/backscrub: app/deepseg.cc $(BIN)/libbackscrub.a $(BIN)/libvideoio.a $(TFLIBS)/libtensorflow-lite.a
 	g++ $^ ${CFLAGS} ${TFCFLAGS} ${LDFLAGS} ${TFLDFLAGS} -o $@
 
 # Backscrub library, must be linked with libtensorflow-lite.a

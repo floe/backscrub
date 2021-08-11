@@ -75,6 +75,8 @@ add_executable(deepseg
   app/deepseg.cc
 )
 
+set_target_properties(deepseg PROPERTIES OUTPUT_NAME backscrub)
+
 target_link_libraries(deepseg
   backscrub
   videoio
