@@ -87,3 +87,7 @@ $(BIN)/%: %.cpp $(BIN)
 
 $(BIN)/%: %.c $(BIN)
 	g++ -o $@ $(CFLAGS) $< $(LDFLAGS)
+
+# transparent video viewer helper tool
+tv: attic/transparent_viewer.c
+	g++ -o $@ $^ -lX11 -lGL $(CFLAGS) $(LDFLAGS)
