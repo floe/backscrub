@@ -12,6 +12,10 @@
   * Benny Baumann (@BenBE)
   * Florian Echtler (@floe)
 
+## License
+
+backscrub is licensed under the Apache License 2.0. See LICENSE file for details.
+
 ## Building
 
 Install dependencies (`sudo apt install libopencv-dev build-essential v4l2loopback-dkms curl`).
@@ -158,6 +162,8 @@ The dataflow through the whole program is roughly as follows:
 ## Limitations/Extensions
 
 As usual: pull requests welcome.
+
+See [Issues](https://github.com/floe/backscrub/issues) and [Pull Requests](https://github.com/floe/backscrub/pulls) for currently discussed/in-progress extensions, and also check out the `experimental` branch.
 
 ## Fixed
   
