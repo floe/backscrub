@@ -9,7 +9,7 @@
 ## Maintainers
 
   * Phil Ashby (@phlash)
-  * Benny Baumann (@benbe)
+  * Benny Baumann (@BenBE)
   * Florian Echtler (@floe)
 
 ## Building
@@ -22,7 +22,7 @@ This is okay, if you only want to download and build the code, however, for deve
 
 Use `cmake` to build the project: create a subfolder (e.g. `build`), change to that folder and run: `cmake && make -j4` (please replace "4" with the number of your cores).
 
-Alternatively, you can also run `make` to build everything (should also clone and build Tensorflow Lite).
+**Deprecated**: Another option to build everything is to run `make` in the root directory of the repository. While this will download and build all dependencies, it comes with a few drawbacks like missing support for XNNPACK. Also this might break with newer versions of Tensorflow Lite as upstream support for this option has been removed. Use at you own risk.
 
 ## Usage
 
@@ -35,7 +35,7 @@ Then, run deepseg (-d -d for full debug, -c for capture device, -v for virtual d
 ./deepseg -d -d -c /dev/video0 -v /dev/video1
 ```
 
-Some cameras like a *Logitec Brio* might need to switch the video source to `MJPG` by passing `-f MJPG` in order to allow for higher resolutions.
+Some cameras (like e.g. `Logitec Brio`) need to switch the video source to `MJPG` by passing `-f MJPG` in order for higher resolutions to become available for use.
 
 ## Requirements
 
