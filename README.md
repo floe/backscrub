@@ -8,9 +8,9 @@
 
 ## Maintainers
 
-  * Phil Ashby (@phlash)
-  * Benny Baumann (@BenBE)
-  * Florian Echtler (@floe)
+  * Phil Ashby ([@phlash](https://github.com/phlash))
+  * Benny Baumann ([@BenBE](https://github.com/BenBE))
+  * Florian Echtler ([@floe](https://github.com/floe))
 
 ## License
 
