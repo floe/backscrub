@@ -2,8 +2,7 @@
  * Authors - @see AUTHORS file. */
 
 #include <stdio.h>
-#include <time.h>
-#include <unistd.h>
+#include <chrono>
 #include <thread>
 #include <mutex>
 #include <opencv2/videoio.hpp>
@@ -24,12 +23,10 @@ struct background_t {
 };
 
 // Internal video reader thread
-static void read_thread(background_t *pbkd) {
+static void read_thread(std::shared_ptr<background_t> pbkd) {
     if (pbkd->dbg) fprintf(stderr, "background: thread start\n");
-    struct timespec last;
-    struct timespec proc;
-    clock_gettime(CLOCK_REALTIME, &last);
-    proc = last;
+    auto last = std::chrono::steady_clock::now();
+    auto proc = last;
     while (pbkd->run) {
         // read new frame - we use a temporary buffer for two reasons:
         // - we can read unlocked, thus we are not impacted by blocking backends (eg: V4L2)
@@ -42,31 +39,29 @@ static void read_thread(background_t *pbkd) {
                 grab.copyTo(pbkd->raw);
                 pbkd->frm += 1;
             }
-            // grab timing point and calculate frame period
-            struct timespec now;
-            clock_gettime(CLOCK_REALTIME, &now);
-            double nsec = (double)(now.tv_sec-last.tv_sec)*1e9 + (double)(now.tv_nsec-last.tv_nsec);
-            last = now;
+            // grab timing point
+            auto now = std::chrono::steady_clock::now();
             // display thumbnail frame with overlay info if debug enabled
             if (pbkd->dbg) {
                 char msg[40];
-                snprintf(msg, sizeof(msg), "FPS:%0.1f FRM:%d", 1e9/nsec, pbkd->frm);
+                long nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(now-last).count();
+                snprintf(msg, sizeof(msg), "FPS:%0.1f FRM:%d", 1e9/(double)nsec, pbkd->frm);
                 cv::Mat frame;
                 cv::resize(grab, frame, cv::Size(240,160));
                 cv::putText(frame, msg, cv::Point(5,frame.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(255,255,255));
                 cv::imshow("Background", frame);
             }
+            last = now;
             // wait for next frame, some sources are real-time, others are not, this ensures all play in real-time.
             if (pbkd->frm>1) {
-                long adj = (now.tv_sec-proc.tv_sec)*1000000000l + (now.tv_nsec-proc.tv_nsec);
-                now.tv_sec = 0;
-                now.tv_nsec= (long)(1.0/pbkd->fps*1e9);
+                auto adj = std::chrono::duration_cast<std::chrono::nanoseconds>(now-proc);
+                auto del = std::chrono::nanoseconds((long)(1e9/pbkd->fps));
                 // adjust for processing time and sleep or skip if no time left
-                if (now.tv_nsec > adj) {
-                    now.tv_nsec -= adj;
-                    nanosleep(&now, nullptr);
+                if (del > adj) {
+                    del -= adj;
+                    std::this_thread::sleep_for(del);
                 }
-                clock_gettime(CLOCK_REALTIME, &proc);
+                proc = std::chrono::steady_clock::now();
             }
         } else {
             // no more frames, but if we processed some, try to reset position and go again
@@ -83,52 +78,56 @@ static void read_thread(background_t *pbkd) {
     if (pbkd->dbg) fprintf(stderr, "background: thread stop\n");
 }
 
-void *load_background(const char *path, int debug) {
-    background_t *pbkd = new background_t;
-    background_t &bkd = *pbkd;
-
-    bkd.dbg = debug;
-    bkd.cap.open(path, cv::CAP_ANY);    // explicitly ask for auto-detection of backend
-    if (!bkd.cap.isOpened()) {
-        if (bkd.dbg) fprintf(stderr, "cv::VideoCapture cannot open: %s\n", path);
-        delete pbkd;
-        return nullptr;
-    }
-    bkd.cap.set(cv::CAP_PROP_CONVERT_RGB, true);
-    int fcc = (int)bkd.cap.get(cv::CAP_PROP_FOURCC);
-    bkd.fps = bkd.cap.get(cv::CAP_PROP_FPS);
-    int cnt = (int)bkd.cap.get(cv::CAP_PROP_FRAME_COUNT);
-    // Here be the logic...
-    //  if: can read 2 video frames => it's a video
-    //  else: is loaded as an image => it's an image
-    //  else: it's not usable.
-    if (bkd.cap.read(bkd.raw) && bkd.cap.read(bkd.raw)) {
-        // it's a video, try a reset and start reader thread..
-        if (bkd.cap.set(cv::CAP_PROP_POS_FRAMES, 0))
-            bkd.frm = 0;
-        else
-            bkd.frm = 2;
-        bkd.vid = true;
-        bkd.run = true;
-        bkd.thr = std::thread(read_thread, pbkd);
-    } else {
-        // static image file, try loading..
-        bkd.cap.release();
-        bkd.raw = cv::imread(path);
-        bkd.vid = false;
-        if (bkd.raw.empty()) {
-            if (bkd.dbg) fprintf(stderr, "cv::imread cannot read: %s\n", path);
-            delete pbkd;
+std::shared_ptr<background_t> load_background(const char *path, int debug) {
+    std::shared_ptr<background_t> pbkd(new background_t);
+    try {
+        pbkd->dbg = debug;
+        pbkd->cap.open(path, cv::CAP_ANY);    // explicitly ask for auto-detection of backend
+        if (!pbkd->cap.isOpened()) {
+            if (pbkd->dbg) fprintf(stderr, "background: cap cannot open: %s\n", path);
             return nullptr;
         }
+        pbkd->cap.set(cv::CAP_PROP_CONVERT_RGB, true);
+        int fcc = (int)pbkd->cap.get(cv::CAP_PROP_FOURCC);
+        pbkd->fps = pbkd->cap.get(cv::CAP_PROP_FPS);
+        int cnt = (int)pbkd->cap.get(cv::CAP_PROP_FRAME_COUNT);
+        // Here be the logic...
+        //  if: can read 2 video frames => it's a video
+        //  else: is loaded as an image => it's an image
+        //  else: it's not usable.
+        if (pbkd->cap.read(pbkd->raw) && pbkd->cap.read(pbkd->raw)) {
+            // it's a video, try a reset and start reader thread..
+            if (pbkd->cap.set(cv::CAP_PROP_POS_FRAMES, 0))
+                pbkd->frm = 0;
+            else
+                pbkd->frm = 2;    // unable to reset, so we're 2 frames in
+            pbkd->vid = true;
+            pbkd->run = true;
+            pbkd->thr = std::thread(read_thread, pbkd);
+        } else {
+            // static image file, try loading..
+            pbkd->cap.release();
+            pbkd->raw = cv::imread(path);
+            pbkd->vid = false;
+            if (pbkd->raw.empty()) {
+                if (pbkd->dbg) fprintf(stderr, "background: imread cannot open: %s\n", path);
+                return nullptr;
+            }
+        }
+        if (pbkd->dbg) fprintf(stderr, "background properties:\n\tvid: %s\n\tfcc: %08x (%.4s)\n\tfps: %f\n\tcnt: %d\n",
+            pbkd->vid ? "yes":"no", fcc, (char *)&fcc, pbkd->fps, cnt);
+    } catch (std::exception const &e) {
+        // oops
+        if (pbkd->dbg) fprintf(stderr, "background: exception while loading: %s\n", e.what());
+        return nullptr;
+    } catch (...) {
+        if (pbkd->dbg) fprintf(stderr, "background: unknown exception\n");
+        return nullptr;
     }
-    if (bkd.dbg) fprintf(stderr, "background properties:\n\tvid: %s\n\tfcc: %08x (%.4s)\n\tfps: %f\n\tcnt: %d\n",
-        bkd.vid ? "yes":"no", fcc, (char *)&fcc, bkd.fps, cnt);
     return pbkd;
 }
 
-int grab_background(void *handle, int width, int height, cv::Mat& out) {
-    background_t *pbkd = (background_t *)handle;
+int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, cv::Mat& out) {
     if (!pbkd)
         return -1;
     // static image or video?
@@ -146,20 +145,18 @@ int grab_background(void *handle, int width, int height, cv::Mat& out) {
     return frm;
 }
 
-void drop_background(void *handle) {
-    if (handle) {
-        background_t *pbkd = (background_t *)handle;
-        if (pbkd->vid) {
-            // stop capture
-            pbkd->run = false;
-            pbkd->thr.join();
-            // clean up
-            pbkd->cap.release();
-            pbkd->raw.release();
-        } else {
-            // clean up
-            pbkd->raw.release();
-        }
-        delete pbkd;
+void drop_background(std::shared_ptr<background_t> pbkd) {
+    if (!pbkd)
+        return;
+    if (pbkd->vid) {
+        // stop capture
+        pbkd->run = false;
+        pbkd->thr.join();
+        // clean up
+        pbkd->cap.release();
+        pbkd->raw.release();
+    } else {
+        // clean up
+        pbkd->raw.release();
     }
 }

@@ -409,14 +409,13 @@ int main(int argc, char* argv[]) try {
 	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
 
-	void *pbk = (back) ? load_background(back, debug) : nullptr;
+	std::shared_ptr<background_t> pbk((back) ? load_background(back, debug) : nullptr);
 	if (!pbk) {
 		if (back) {
 			printf("Warning: could not load background image, defaulting to green\n");
 		}
 	}
-	// NB: must be declared here (even though it's only used within filterActive condition,
-	// as this ensures the underlying array isn't deallocated on each loop (and causing crashes!)
+	// default green screen background
 	cv::Mat bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 
 	int lbfd = loopback_init(vcam,width,height,debug);
@@ -462,15 +461,22 @@ int main(int argc, char* argv[]) try {
 			// do background detection magic
 			ai.get_output_mask(mask);
 
-			// get background frame
+			// get background frame:
+			// - specified source if set
+			// - copy of input video if blur_strength != 0
+			// - default green (initial value)
+			bool canBlur = false;
 			if (pbk) {
-				grab_background(pbk, width, height, bg);
-			} else {
-				if (blur_strength) {
-					raw.copyTo(bg);
-					cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
-				}
+				if (grab_background(pbk, width, height, bg)<0)
+					throw "Failed to read background frame";
+				canBlur = true;
+			} else if (blur_strength) {
+				raw.copyTo(bg);
+				canBlur = true;
 			}
+			// blur frame if requested (unless it's just green)
+			if (canBlur && blur_strength)
+				cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
 			ti.prepns = timestamp();
 			// alpha blend background over foreground using mask
 			raw = alpha_blend(bg, raw, mask);
