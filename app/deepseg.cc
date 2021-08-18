@@ -17,6 +17,7 @@
 
 #include "videoio/loopback.h"
 #include "lib/libbackscrub.h"
+#include "background.h"
 
 // Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
 // http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).
@@ -223,7 +224,12 @@ public:
 	}
 
 	~CalcMask() {
+		// mark as done
 		state = thread_state::DONE;
+		// wake up processing thread
+		new_frame = true;
+		condition_new_frame.notify_all();
+		// collect termination
 		thread.join();
 		bs_maskgen_delete(maskctx);
 	}
@@ -403,17 +409,15 @@ int main(int argc, char* argv[]) try {
 	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
 
-	cv::Mat bg;
-	if (back) {
-		bg = cv::imread(back);
-	}
-	if (bg.empty()) {
+	void *pbk = (back) ? load_background(back, debug) : nullptr;
+	if (!pbk) {
 		if (back) {
 			printf("Warning: could not load background image, defaulting to green\n");
 		}
-		bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 	}
-	cv::resize(bg,bg,cv::Size(width,height));
+	// NB: must be declared here (even though it's only used within filterActive condition,
+	// as this ensures the underlying array isn't deallocated on each loop (and causing crashes!)
+	cv::Mat bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 
 	int lbfd = loopback_init(vcam,width,height,debug);
 	if(lbfd < 0) {
@@ -454,18 +458,24 @@ int main(int argc, char* argv[]) try {
 
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
-		if (blur_strength) {
-			raw.copyTo(bg);
-			cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
-		}
-		ti.prepns = timestamp();
-
 		if (filterActive) {
 			// do background detection magic
 			ai.get_output_mask(mask);
 
+			// get background frame
+			if (pbk) {
+				grab_background(pbk, width, height, bg);
+			} else {
+				if (blur_strength) {
+					raw.copyTo(bg);
+					cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
+				}
+			}
+			ti.prepns = timestamp();
 			// alpha blend background over foreground using mask
 			raw = alpha_blend(bg, raw, mask);
+		} else {
+			ti.prepns = timestamp();
 		}
 		ti.maskns = timestamp();
 
@@ -539,6 +549,8 @@ int main(int argc, char* argv[]) try {
 				break;
 		}
 	}
+	if (pbk)
+		drop_background(pbk);
 
 	printf("\n");
 	return 0;
