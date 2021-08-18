@@ -31,10 +31,17 @@ static void read_thread(background_t *pbkd) {
     clock_gettime(CLOCK_REALTIME, &last);
     proc = last;
     while (pbkd->run) {
-        // read frame under lock
-        pbkd->mux.lock();
-        if (pbkd->cap.read(pbkd->raw)) {
-            pbkd->frm += 1;
+        // read new frame - we use a temporary buffer for two reasons:
+        // - we can read unlocked, thus we are not impacted by blocking backends (eg: V4L2)
+        // - we preserve the last frame for callers, such that if a video ends, they always have a frame to use
+        cv::Mat grab;
+        if (pbkd->cap.read(grab)) {
+            // got a frame, lock and copy for callers
+            {
+                std::unique_lock<std::mutex> hold(pbkd->mux);
+                grab.copyTo(pbkd->raw);
+                pbkd->frm += 1;
+            }
             // grab timing point and calculate frame period
             struct timespec now;
             clock_gettime(CLOCK_REALTIME, &now);
@@ -45,22 +52,19 @@ static void read_thread(background_t *pbkd) {
                 char msg[40];
                 snprintf(msg, sizeof(msg), "FPS:%0.1f FRM:%d", 1e9/nsec, pbkd->frm);
                 cv::Mat frame;
-                cv::resize(pbkd->raw, frame, cv::Size(240,160));
+                cv::resize(grab, frame, cv::Size(240,160));
                 cv::putText(frame, msg, cv::Point(5,frame.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(255,255,255));
                 cv::imshow("Background", frame);
             }
-            pbkd->mux.unlock();
             // wait for next frame, some sources are real-time, others are not, this ensures all play in real-time.
             if (pbkd->frm>1) {
                 long adj = (now.tv_sec-proc.tv_sec)*1000000000l + (now.tv_nsec-proc.tv_nsec);
                 now.tv_sec = 0;
                 now.tv_nsec= (long)(1.0/pbkd->fps*1e9);
-                // adjust for processing time or skip if less than that
+                // adjust for processing time and sleep or skip if no time left
                 if (now.tv_nsec > adj) {
                     now.tv_nsec -= adj;
                     nanosleep(&now, nullptr);
-                } else {
-                    if (pbkd->dbg) fprintf(stderr, "background: wait=%ld adj=%ld\n", now.tv_nsec, adj);
                 }
                 clock_gettime(CLOCK_REALTIME, &proc);
             }
