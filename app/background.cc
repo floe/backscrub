@@ -27,6 +27,7 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
     if (pbkd->dbg) fprintf(stderr, "background: thread start\n");
     auto last = std::chrono::steady_clock::now();
     auto proc = last;
+    double min=0.0, max=0.0;
     while (pbkd->run) {
         // read new frame - we use a temporary buffer for two reasons:
         // - we can read unlocked, thus we are not impacted by blocking backends (eg: V4L2)
@@ -45,23 +46,24 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
             if (pbkd->dbg) {
                 char msg[40];
                 long nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(now-last).count();
-                snprintf(msg, sizeof(msg), "FPS:%0.1f FRM:%d", 1e9/(double)nsec, pbkd->frm);
+                double fps = 1e9/(double)nsec;
+                // allow a few settling frames..
+                if (pbkd->frm > 10) {
+                    min = (0.0==min || fps<min) ? fps : min;
+                    max = (0.0==max || fps>max) ? fps : max;
+                }
+                snprintf(msg, sizeof(msg), "FPS:%0.1f<%0.1f<%0.1f FRM:%05d", min, fps, max, pbkd->frm);
                 cv::Mat frame;
-                cv::resize(grab, frame, cv::Size(240,160));
-                cv::putText(frame, msg, cv::Point(5,frame.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(255,255,255));
+                cv::resize(grab, frame, cv::Size(320,240));
+                cv::putText(frame, msg, cv::Point(5,frame.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
                 cv::imshow("Background", frame);
             }
             last = now;
             // wait for next frame, some sources are real-time, others are not, this ensures all play in real-time.
-            if (pbkd->frm>1) {
-                auto adj = std::chrono::duration_cast<std::chrono::nanoseconds>(now-proc);
-                auto del = std::chrono::nanoseconds((long)(1e9/pbkd->fps));
-                // adjust for processing time and sleep or skip if no time left
-                if (del > adj) {
-                    del -= adj;
-                    std::this_thread::sleep_for(del);
-                }
-                proc = std::chrono::steady_clock::now();
+            proc += std::chrono::nanoseconds((long)(1e9/pbkd->fps));
+            while (now < proc) {
+                std::this_thread::sleep_until(proc);
+                now = std::chrono::steady_clock::now();
             }
         } else {
             // no more frames, but if we processed some, try to reset position and go again
