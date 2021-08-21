@@ -78,10 +78,32 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
     if (pbkd->dbg) fprintf(stderr, "background: thread stop\n");
 }
 
+static void drop_background(background_t *pbkd) {
+    if (!pbkd)
+        return;
+    if (pbkd->vid) {
+        // stop capture
+        if (pbkd->run) {
+            pbkd->run = false;
+            pbkd->thr.join();
+        }
+        // clean up
+        pbkd->cap.release();
+        pbkd->raw.release();
+    } else {
+        // clean up
+        pbkd->raw.release();
+    }
+    delete pbkd;
+}
+
 std::shared_ptr<background_t> load_background(const char *path, int debug) {
-    std::shared_ptr<background_t> pbkd(new background_t);
+    // allocate a shared pointer around storage for the handle, associate custom deleter to clean up when eventually released
+    auto pbkd = std::shared_ptr<background_t>(new background_t, [](background_t *p) { drop_background(p); });
     try {
         pbkd->dbg = debug;
+        pbkd->vid = false;
+        pbkd->run = false;
         pbkd->cap.open(path, cv::CAP_ANY);    // explicitly ask for auto-detection of backend
         if (!pbkd->cap.isOpened()) {
             if (pbkd->dbg) fprintf(stderr, "background: cap cannot open: %s\n", path);
@@ -108,7 +130,6 @@ std::shared_ptr<background_t> load_background(const char *path, int debug) {
             // static image file, try loading..
             pbkd->cap.release();
             pbkd->raw = cv::imread(path);
-            pbkd->vid = false;
             if (pbkd->raw.empty()) {
                 if (pbkd->dbg) fprintf(stderr, "background: imread cannot open: %s\n", path);
                 return nullptr;
@@ -143,20 +164,4 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
         frm = 1;
     }
     return frm;
-}
-
-void drop_background(std::shared_ptr<background_t> pbkd) {
-    if (!pbkd)
-        return;
-    if (pbkd->vid) {
-        // stop capture
-        pbkd->run = false;
-        pbkd->thr.join();
-        // clean up
-        pbkd->cap.release();
-        pbkd->raw.release();
-    } else {
-        // clean up
-        pbkd->raw.release();
-    }
 }

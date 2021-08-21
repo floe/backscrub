@@ -409,7 +409,8 @@ int main(int argc, char* argv[]) try {
 	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
 
-	std::shared_ptr<background_t> pbk((back) ? load_background(back, debug) : nullptr);
+	// Load background if specified
+	auto pbk((back) ? load_background(back, debug) : nullptr);
 	if (!pbk) {
 		if (back) {
 			printf("Warning: could not load background image, defaulting to green\n");
@@ -555,8 +556,6 @@ int main(int argc, char* argv[]) try {
 				break;
 		}
 	}
-	if (pbk)
-		drop_background(pbk);
 
 	printf("\n");
 	return 0;
