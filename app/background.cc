@@ -135,8 +135,9 @@ std::shared_ptr<background_t> load_background(const char *path, int debug) {
                 return nullptr;
             }
         }
-        if (pbkd->dbg) fprintf(stderr, "background properties:\n\tvid: %s\n\tfcc: %08x (%.4s)\n\tfps: %f\n\tcnt: %d\n",
-            pbkd->vid ? "yes":"no", fcc, (char *)&fcc, pbkd->fps, cnt);
+        if (pbkd->dbg)
+            fprintf(stderr, "background properties:\n\tvid: %s\n\tfcc: %08x (%.4s)\n\tfps: %f\n\tcnt: %d\n",
+                pbkd->vid ? "yes":"no", fcc, (char *)&fcc, pbkd->fps, cnt);
     } catch (std::exception const &e) {
         // oops
         if (pbkd->dbg) fprintf(stderr, "background: exception while loading: %s\n", e.what());
