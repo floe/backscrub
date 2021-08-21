@@ -101,7 +101,7 @@ static void drop_background(background_t *pbkd) {
 
 std::shared_ptr<background_t> load_background(const char *path, int debug) {
     // allocate a shared pointer around storage for the handle, associate custom deleter to clean up when eventually released
-    auto pbkd = std::shared_ptr<background_t>(new background_t, [](background_t *p) { drop_background(p); });
+    auto pbkd = std::shared_ptr<background_t>(new background_t, drop_background);
     try {
         pbkd->dbg = debug;
         pbkd->vid = false;
