@@ -42,8 +42,8 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
             }
             // grab timing point
             auto now = std::chrono::steady_clock::now();
-            // display thumbnail frame with overlay info if debug enabled
-            if (pbkd->dbg) {
+            // display thumbnail frame with overlay info if double debug enabled
+            if (pbkd->dbg > 1) {
                 char msg[40];
                 long nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(now-last).count();
                 double fps = 1e9/(double)nsec;
