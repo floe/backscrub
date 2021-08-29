@@ -268,7 +268,7 @@ int main(int argc, char* argv[]) try {
 	int fourcc = 0;
 	size_t blur_strength = 0;
 
-	const char* modelname = "models/segm_full_v679.tflite";
+	const char* modelname = "models/selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
 
 	bool showUsage = false;
 	for (int arg=1; arg<argc; arg++) {
