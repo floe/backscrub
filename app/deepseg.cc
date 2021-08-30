@@ -389,7 +389,9 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "-h            Specify the video stream height\n");
 		fprintf(stderr, "-f            Specify the camera video format, i.e. MJPG or 47504A4D.\n");
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
-		fprintf(stderr, "-b            Specify the background image\n");
+		fprintf(stderr, "-b            Specify the background (any local or network OpenCV source) e.g.\n");
+		fprintf(stderr, "                images/total_landscaping.jpg,\n");
+		fprintf(stderr, "                https://github.com/floe/backscrub/raw/experimental/images/rotating_earth.webm\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
 		fprintf(stderr, "-p            Add post-processing steps\n");
 		fprintf(stderr, "-p bgblur:<strength>   Blur the video background\n");
