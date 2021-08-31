@@ -24,6 +24,8 @@
 #define __STR(X) #X
 #define _STR(X) __STR(X)
 
+#define DEBUG_WIN_NAME "Backscrub " _STR(DEEPSEG_VERSION)
+
 int fourCcFromString(const std::string& in)
 {
 	if (in.empty())
@@ -389,7 +391,9 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "-h            Specify the video stream height\n");
 		fprintf(stderr, "-f            Specify the camera video format, i.e. MJPG or 47504A4D.\n");
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
-		fprintf(stderr, "-b            Specify the background image\n");
+		fprintf(stderr, "-b            Specify the background (any local or network OpenCV source) e.g.\n");
+		fprintf(stderr, "                local:   images/total_landscaping.jpg\n");
+		fprintf(stderr, "                network: https://git.io/JE9o5\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
 		fprintf(stderr, "-p            Add post-processing steps\n");
 		fprintf(stderr, "-p bgblur:<strength>   Blur the video background\n");
@@ -408,6 +412,11 @@ int main(int argc, char* argv[]) try {
 	printf("threads:%zu\n", threads);
 	printf("back:   %s\n", back ? back : "(none)");
 	printf("model:  %s\n\n", modelname);
+
+	// Create debug window early (ensures highgui is correctly initialised on this thread)
+	if (debug > 1) {
+		cv::namedWindow(DEBUG_WIN_NAME, cv::WINDOW_AUTOSIZE | cv::WINDOW_GUI_EXPANDED);
+	}
 
 	// Load background if specified
 	auto pbk((back) ? load_background(back, debug) : nullptr);
@@ -517,6 +526,8 @@ int main(int argc, char* argv[]) try {
 		}
 
 		// timing details..
+		double mfps = 1e9/diffnanosecs(ti.v4l2ns,ti.lastns);
+		double afps = 1e9/ai.loopns;
 		printf("main [grab:%9ld retr:%9ld copy:%9ld prep:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f] ai: [wait:%9ld prep:%9ld tflt:%9ld mask:%9ld FPS: %5.2f] \e[K\r",
 			diffnanosecs(ti.grabns,ti.lastns),
 			diffnanosecs(ti.retrns,ti.grabns),
@@ -525,12 +536,12 @@ int main(int argc, char* argv[]) try {
 			diffnanosecs(ti.maskns,ti.prepns),
 			diffnanosecs(ti.postns,ti.maskns),
 			diffnanosecs(ti.v4l2ns,ti.postns),
-			1e9/diffnanosecs(ti.v4l2ns,ti.lastns),
+			mfps,
 			ai.waitns,
 			ai.prepns,
 			ai.tfltns,
 			ai.maskns,
-			1e9/ai.loopns
+			afps
 		);
 		fflush(stdout);
 		ti.lastns = timestamp();
@@ -538,7 +549,10 @@ int main(int argc, char* argv[]) try {
 
 		cv::Mat test;
 		cv::cvtColor(raw,test,cv::COLOR_YUV2BGR_YUYV);
-		cv::imshow("DeepSeg " _STR(DEEPSEG_VERSION),test);
+		char status[80];
+		snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
+		cv::putText(test, status, cv::Point(5,test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+		cv::imshow(DEBUG_WIN_NAME,test);
 
 		auto keyPress = cv::waitKey(1);
 		switch(keyPress) {
