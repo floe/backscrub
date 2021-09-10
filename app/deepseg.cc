@@ -8,6 +8,8 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <fstream>
+#include <regex>
 #include <condition_variable>
 
 #include <opencv2/core/core.hpp>
@@ -23,6 +25,11 @@
 // http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).
 #define __STR(X) #X
 #define _STR(X) __STR(X)
+
+// Ensure we have a default search location for resource files
+#ifndef INSTALL_PREFIX
+#error No INSTALL_PREFIX defined at compile time
+#endif
 
 #define DEBUG_WIN_NAME "Backscrub " _STR(DEEPSEG_VERSION)
 
@@ -256,6 +263,57 @@ static bool is_number(const std::string &s) {
 	return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
 }
 
+std::string resolve_path(const std::string& provided, const std::string& type) {
+	std::string result;
+	// Check for network (URI) schema and return as-is
+	// https://www.rfc-editor.org/rfc/rfc3986#section-3.1
+	// however we require at least two chars in the scheme to allow driver letters to work on Windows..
+	if (std::regex_match(provided, std::regex("^[[:alpha:]][[:alnum:]+-.]{1,}:.*$")))
+		return provided;
+	// We use std::ifstream to check we can open each test path read-only, in order:
+	// 1. exactly what was provided
+	if (std::ifstream(provided).good())
+		return provided;
+	// 2. prefixed with compile-time install path
+	result = _STR(INSTALL_PREFIX);
+	result.append("/share/backscrub/");
+	result.append(type);
+	result.append("/");
+	result.append(provided);
+	if (std::ifstream(result).good())
+		return result;
+	// 3. relative to current binary location
+	// (https://stackoverflow.com/questions/933850/how-do-i-find-the-location-of-the-executable-in-c)
+	char binloc[1024];
+	ssize_t n = readlink("/proc/self/exe", binloc, sizeof(binloc));
+	if (n>0) {
+		binloc[n] = 0;
+		result = binloc;
+		size_t pos = result.rfind('/');
+		pos = result.rfind('/', pos-1);
+		if (pos != result.npos) {
+			result.erase(pos);
+			result.append("/share/backscrub/");
+			result.append(type);
+			result.append("/");
+			result.append(provided);
+			if (std::ifstream(result).good())
+				return result;
+			// development folder?
+			result.erase(pos);
+			result.append("/");
+			result.append(type);
+			result.append("/");
+			result.append(provided);
+			if (std::ifstream(result).good())
+				return result;
+		}
+	}
+	// 4. XDG standard locations...maybe later?
+	result.clear();
+	return result;
+}
+
 int main(int argc, char* argv[]) try {
 
 	printf("backscrub version %s\n", _STR(DEEPSEG_VERSION));
@@ -268,15 +326,15 @@ int main(int argc, char* argv[]) try {
 	size_t threads= 2;
 	size_t width  = 640;
 	size_t height = 480;
-	const char *back = nullptr; // "images/background.png";
-	const char *vcam = "/dev/video0";
-	const char *ccam = "/dev/video1";
+	const char *back = nullptr;
+	const char *vcam = "/dev/video1";
+	const char *ccam = "/dev/video0";
 	bool flipHorizontal = false;
 	bool flipVertical   = false;
 	int fourcc = 0;
 	size_t blur_strength = 0;
 
-	const char* modelname = "models/selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
+	const char* modelname = "selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
 
 	bool showUsage = false;
 	for (int arg=1; arg<argc; arg++) {
@@ -379,7 +437,7 @@ int main(int argc, char* argv[]) try {
 	if (showUsage) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "usage:\n");
-		fprintf(stderr, "  deepseg [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
+		fprintf(stderr, "  backscrub [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
 		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>] [-p <option:value>]\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "-?            Display this usage information\n");
@@ -402,6 +460,8 @@ int main(int argc, char* argv[]) try {
 		exit(1);
 	}
 
+	std::string s_model = resolve_path(modelname, "models");
+	std::string s_backg = back ? resolve_path(back, "images") : "";
 	printf("debug:  %d\n", debug);
 	printf("ccam:   %s\n", ccam);
 	printf("vcam:   %s\n", vcam);
@@ -410,8 +470,14 @@ int main(int argc, char* argv[]) try {
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
 	printf("threads:%zu\n", threads);
-	printf("back:   %s\n", back ? back : "(none)");
-	printf("model:  %s\n\n", modelname);
+	printf("back:   %s => %s\n", back ? back : "(none)", s_backg.empty() ? "(none)" : s_backg.c_str());
+	printf("model:  %s => %s\n\n", modelname ? modelname : "(none)", s_model.empty() ? "(none)" : s_model.c_str());
+
+	// No model - stop here
+	if (s_model.empty()) {
+		printf("Error: unable to load specified model: %s\n", modelname);
+		exit(1);
+	}
 
 	// Create debug window early (ensures highgui is correctly initialised on this thread)
 	if (debug > 1) {
@@ -419,9 +485,9 @@ int main(int argc, char* argv[]) try {
 	}
 
 	// Load background if specified
-	auto pbk((back) ? load_background(back, debug) : nullptr);
+	auto pbk((s_backg.empty()) ? nullptr : load_background(s_backg.c_str(), debug));
 	if (!pbk) {
-		if (back) {
+		if (!s_backg.empty()) {
 			printf("Warning: could not load background image, defaulting to green\n");
 		}
 	}
@@ -448,7 +514,7 @@ int main(int argc, char* argv[]) try {
 
 	cv::Mat mask(height, width, CV_8U);
 	cv::Mat raw;
-	CalcMask ai(modelname, threads, width, height);
+	CalcMask ai(s_model.c_str(), threads, width, height);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
