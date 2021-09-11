@@ -274,6 +274,9 @@ std::string resolve_path(const std::string& provided, const std::string& type) {
 	// 1. exactly what was provided
 	if (std::ifstream(provided).good())
 		return provided;
+	// to emulate PATH search behaviour (rule of least surprise), we stop here if provided has path separators
+	if (provided.find('/') != provided.npos)
+		return result;
 	// 2. prefixed with compile-time install path
 	result = _STR(INSTALL_PREFIX);
 	result.append("/share/backscrub/");
