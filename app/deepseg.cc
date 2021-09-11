@@ -279,7 +279,7 @@ std::optional<std::string> resolve_path(const std::string& provided, const std::
 	// to emulate PATH search behaviour (rule of least surprise), we stop here if provided has path separators
 	if (provided.find('/') != provided.npos)
 		return {};
-	// 1a. BACKSCRUB_PATH prefixes if set
+	// 2. BACKSCRUB_PATH prefixes if set
 	if (getenv("BACKSCRUB_PATH")!=nullptr) {
 		// getline trick: https://stackoverflow.com/questions/5167625/splitting-a-c-stdstring-using-tokens-e-g
 		std::istringstream bsp(getenv("BACKSCRUB_PATH"));
@@ -289,11 +289,16 @@ std::optional<std::string> resolve_path(const std::string& provided, const std::
 				return result;
 		}
 	}
-	// 2. prefixed with compile-time install path
+	// 3. XDG standard data location
+	result = getenv("XDG_DATA_HOME") ? getenv("XDG_DATA_HOME") : std::string() + getenv("HOME") + "/.local/share";
+	result += "/backscrub/" + type + "/" + provided;
+	if (std::ifstream(result).good())
+		return result;
+	// 4. prefixed with compile-time install path
 	result = std::string() + _STR(INSTALL_PREFIX) + "/share/backscrub/" + type + "/" + provided;
 	if (std::ifstream(result).good())
 		return result;
-	// 3. relative to current binary location
+	// 5. relative to current binary location
 	// (https://stackoverflow.com/questions/933850/how-do-i-find-the-location-of-the-executable-in-c)
 	char binloc[1024];
 	ssize_t n = readlink("/proc/self/exe", binloc, sizeof(binloc));
@@ -314,7 +319,6 @@ std::optional<std::string> resolve_path(const std::string& provided, const std::
 				return result;
 		}
 	}
-	// 4. XDG standard locations...maybe later?
 	return {};
 }
 
