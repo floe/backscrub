@@ -9,6 +9,7 @@
 #include <thread>
 #include <mutex>
 #include <fstream>
+#include <istream>
 #include <regex>
 #include <condition_variable>
 
@@ -277,6 +278,17 @@ std::string resolve_path(const std::string& provided, const std::string& type) {
 	// to emulate PATH search behaviour (rule of least surprise), we stop here if provided has path separators
 	if (provided.find('/') != provided.npos)
 		return result;
+	// 1a. BACKSCRUB_PATH prefixes if set
+	if (getenv("BACKSCRUB_PATH")!=nullptr) {
+		std::istringstream bsp(getenv("BACKSCRUB_PATH"));
+		while (std::getline(bsp, result, ':')) {
+			result.append(type);
+			result.append("/");
+			result.append(provided);
+			if (std::ifstream(result).good())
+				return result;
+		}
+	}
 	// 2. prefixed with compile-time install path
 	result = _STR(INSTALL_PREFIX);
 	result.append("/share/backscrub/");
