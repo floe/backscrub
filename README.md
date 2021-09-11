@@ -179,3 +179,7 @@ See [Issues](https://github.com/floe/backscrub/issues) and [Pull Requests](https
 ## Other links
 
 Firefox preferred formats: https://searchfox.org/mozilla-central/source/third_party/libwebrtc/webrtc/modules/video_capture/linux/video_capture_linux.cc#142-159
+
+## Feeding obs-studio
+
+[We have been notified](https://github.com/floe/backscrub/issues/105) that some snap packaged versions of `obs-studio` are unable to detect/use a virtual camera as provided by `backscrub`. Please check the details for workarounds if this applies to you.
