@@ -137,7 +137,7 @@ install(TARGETS deepseg)
 endif()
 install(TARGETS backscrub)
 install(FILES lib/libbackscrub.h DESTINATION include/backscrub)
-install(DIRECTORY images
+install(DIRECTORY backgrounds
   DESTINATION ${CMAKE_INSTALL_PREFIX}/share/backscrub
   FILES_MATCHING PATTERN "*.jpg" PATTERN "*.png" PATTERN "*.gif" PATTERN "*.webm")
 install(DIRECTORY models

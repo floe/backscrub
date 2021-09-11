@@ -450,7 +450,7 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "-f            Specify the camera video format, i.e. MJPG or 47504A4D.\n");
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
 		fprintf(stderr, "-b            Specify the background (any local or network OpenCV source) e.g.\n");
-		fprintf(stderr, "                local:   images/total_landscaping.jpg\n");
+		fprintf(stderr, "                local:   backgrounds/total_landscaping.jpg\n");
 		fprintf(stderr, "                network: https://git.io/JE9o5\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
 		fprintf(stderr, "-p            Add post-processing steps\n");
@@ -461,7 +461,7 @@ int main(int argc, char* argv[]) try {
 	}
 
 	std::string s_model = resolve_path(modelname, "models");
-	std::string s_backg = back ? resolve_path(back, "images") : "";
+	std::string s_backg = back ? resolve_path(back, "backgrounds") : "";
 	printf("debug:  %d\n", debug);
 	printf("ccam:   %s\n", ccam);
 	printf("vcam:   %s\n", vcam);
