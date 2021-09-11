@@ -282,19 +282,13 @@ std::string resolve_path(const std::string& provided, const std::string& type) {
 	if (getenv("BACKSCRUB_PATH")!=nullptr) {
 		std::istringstream bsp(getenv("BACKSCRUB_PATH"));
 		while (std::getline(bsp, result, ':')) {
-			result.append(type);
-			result.append("/");
-			result.append(provided);
+			result += "/" + type + "/" + provided;
 			if (std::ifstream(result).good())
 				return result;
 		}
 	}
 	// 2. prefixed with compile-time install path
-	result = _STR(INSTALL_PREFIX);
-	result.append("/share/backscrub/");
-	result.append(type);
-	result.append("/");
-	result.append(provided);
+	result = std::string() + _STR(INSTALL_PREFIX) + "/share/backscrub/" + type + "/" + provided;
 	if (std::ifstream(result).good())
 		return result;
 	// 3. relative to current binary location
@@ -308,18 +302,12 @@ std::string resolve_path(const std::string& provided, const std::string& type) {
 		pos = result.rfind('/', pos-1);
 		if (pos != result.npos) {
 			result.erase(pos);
-			result.append("/share/backscrub/");
-			result.append(type);
-			result.append("/");
-			result.append(provided);
+			result += "/share/backscrub/" + type + "/" + provided;
 			if (std::ifstream(result).good())
 				return result;
 			// development folder?
 			result.erase(pos);
-			result.append("/");
-			result.append(type);
-			result.append("/");
-			result.append(provided);
+			result += "/" + type + "/" + provided;
 			if (std::ifstream(result).good())
 				return result;
 		}
