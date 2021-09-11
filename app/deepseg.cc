@@ -11,6 +11,7 @@
 #include <fstream>
 #include <istream>
 #include <regex>
+#include <optional>
 #include <condition_variable>
 
 #include <opencv2/core/core.hpp>
@@ -264,7 +265,7 @@ static bool is_number(const std::string &s) {
 	return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
 }
 
-std::string resolve_path(const std::string& provided, const std::string& type) {
+std::optional<std::string> resolve_path(const std::string& provided, const std::string& type) {
 	std::string result;
 	// Check for network (URI) schema and return as-is
 	// https://www.rfc-editor.org/rfc/rfc3986#section-3.1
@@ -277,9 +278,10 @@ std::string resolve_path(const std::string& provided, const std::string& type) {
 		return provided;
 	// to emulate PATH search behaviour (rule of least surprise), we stop here if provided has path separators
 	if (provided.find('/') != provided.npos)
-		return result;
+		return {};
 	// 1a. BACKSCRUB_PATH prefixes if set
 	if (getenv("BACKSCRUB_PATH")!=nullptr) {
+		// getline trick: https://stackoverflow.com/questions/5167625/splitting-a-c-stdstring-using-tokens-e-g
 		std::istringstream bsp(getenv("BACKSCRUB_PATH"));
 		while (std::getline(bsp, result, ':')) {
 			result += "/" + type + "/" + provided;
@@ -313,8 +315,7 @@ std::string resolve_path(const std::string& provided, const std::string& type) {
 		}
 	}
 	// 4. XDG standard locations...maybe later?
-	result.clear();
-	return result;
+	return {};
 }
 
 int main(int argc, char* argv[]) try {
@@ -470,8 +471,8 @@ int main(int argc, char* argv[]) try {
 		s_ccam = "/dev/" + s_ccam;
 	if (s_vcam.rfind("/dev/", 0)!=0)
 		s_vcam = "/dev/" + s_vcam;
-	std::string s_model = resolve_path(modelname, "models");
-	std::string s_backg = back ? resolve_path(back, "backgrounds") : "";
+	std::optional<std::string> s_model = resolve_path(modelname, "models");
+	std::optional<std::string> s_backg = back ? resolve_path(back, "backgrounds") : std::nullopt;
 	printf("debug:  %d\n", debug);
 	printf("ccam:   %s\n", s_ccam.c_str());
 	printf("vcam:   %s\n", s_vcam.c_str());
@@ -480,11 +481,11 @@ int main(int argc, char* argv[]) try {
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
 	printf("threads:%zu\n", threads);
-	printf("back:   %s => %s\n", back ? back : "(none)", s_backg.empty() ? "(none)" : s_backg.c_str());
-	printf("model:  %s => %s\n\n", modelname ? modelname : "(none)", s_model.empty() ? "(none)" : s_model.c_str());
+	printf("back:   %s => %s\n", back ? back : "(none)", s_backg ? s_backg.value().c_str() : "(none)");
+	printf("model:  %s => %s\n\n", modelname ? modelname : "(none)", s_model ? s_model.value().c_str() : "(none)");
 
 	// No model - stop here
-	if (s_model.empty()) {
+	if (!s_model) {
 		printf("Error: unable to load specified model: %s\n", modelname);
 		exit(1);
 	}
@@ -495,9 +496,9 @@ int main(int argc, char* argv[]) try {
 	}
 
 	// Load background if specified
-	auto pbk((s_backg.empty()) ? nullptr : load_background(s_backg.c_str(), debug));
+	auto pbk(s_backg ? load_background(s_backg.value().c_str(), debug) : nullptr);
 	if (!pbk) {
-		if (!s_backg.empty()) {
+		if (s_backg) {
 			printf("Warning: could not load background image, defaulting to green\n");
 		}
 	}
@@ -524,7 +525,7 @@ int main(int argc, char* argv[]) try {
 
 	cv::Mat mask(height, width, CV_8U);
 	cv::Mat raw;
-	CalcMask ai(s_model.c_str(), threads, width, height);
+	CalcMask ai(s_model.value().c_str(), threads, width, height);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
