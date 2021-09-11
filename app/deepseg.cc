@@ -215,11 +215,11 @@ public:
 	long maskns;
 	long loopns;
 
-	CalcMask(const char *modelname,
+	CalcMask(const std::string& modelname,
 			 size_t threads,
 			 size_t width,
 			 size_t height) {
-		maskctx = bs_maskgen_new(modelname,threads,width,height,nullptr,onprep,oninfer,onmask,this);
+		maskctx = bs_maskgen_new(modelname.c_str(),threads,width,height,nullptr,onprep,oninfer,onmask,this);
 		if (!maskctx)
 			throw "Could not create mask context";
 
@@ -496,7 +496,7 @@ int main(int argc, char* argv[]) try {
 	}
 
 	// Load background if specified
-	auto pbk(s_backg ? load_background(s_backg.value().c_str(), debug) : nullptr);
+	auto pbk(s_backg ? load_background(s_backg.value(), debug) : nullptr);
 	if (!pbk) {
 		if (s_backg) {
 			printf("Warning: could not load background image, defaulting to green\n");
@@ -525,7 +525,7 @@ int main(int argc, char* argv[]) try {
 
 	cv::Mat mask(height, width, CV_8U);
 	cv::Mat raw;
-	CalcMask ai(s_model.value().c_str(), threads, width, height);
+	CalcMask ai(s_model.value(), threads, width, height);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 

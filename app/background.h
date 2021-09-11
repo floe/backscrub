@@ -11,7 +11,7 @@ struct background_t;
 // Load  a background media path (image or video file, network stream [URL])
 // Returns opaque handle or nullptr on error. The returned shared_ptr will
 // clean up after itself during deletion
-std::shared_ptr<background_t> load_background(const char *path, int debug);
+std::shared_ptr<background_t> load_background(const std::string& path, int debug);
 
 // Grab current frame from background
 // Returns current frame number (1 for still image) or -1 on error
