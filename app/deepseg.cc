@@ -475,11 +475,18 @@ int main(int argc, char* argv[]) try {
 		exit(1);
 	}
 
+	std::string s_ccam(ccam);
+	std::string s_vcam(vcam);
+	// permit unprefixed device names
+	if (s_ccam.rfind("/dev/", 0)!=0)
+		s_ccam = "/dev/" + s_ccam;
+	if (s_vcam.rfind("/dev/", 0)!=0)
+		s_vcam = "/dev/" + s_vcam;
 	std::string s_model = resolve_path(modelname, "models");
 	std::string s_backg = back ? resolve_path(back, "backgrounds") : "";
 	printf("debug:  %d\n", debug);
-	printf("ccam:   %s\n", ccam);
-	printf("vcam:   %s\n", vcam);
+	printf("ccam:   %s\n", s_ccam.c_str());
+	printf("vcam:   %s\n", s_vcam.c_str());
 	printf("width:  %zu\n", width);
 	printf("height: %zu\n", height);
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
@@ -509,13 +516,13 @@ int main(int argc, char* argv[]) try {
 	// default green screen background
 	cv::Mat bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 
-	int lbfd = loopback_init(vcam,width,height,debug);
+	int lbfd = loopback_init(s_vcam.c_str(),width,height,debug);
 	if(lbfd < 0) {
 		fprintf(stderr, "Failed to initialize vcam device.\n");
 		exit(1);
 	}
 
-	cv::VideoCapture cap(ccam, cv::CAP_V4L2);
+	cv::VideoCapture cap(s_ccam.c_str(), cv::CAP_V4L2);
 	if(!cap.isOpened()) {
 		perror("failed to open video device");
 		exit(1);
