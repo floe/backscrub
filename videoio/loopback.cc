@@ -26,7 +26,7 @@ void print_format(struct v4l2_format*vid_format) {
 	printf("\n");
 }
 
-int loopback_init(const char* device, int w, int h, int debug) {
+int loopback_init(const std::string& device, int w, int h, int debug) {
 
 	struct v4l2_capability vid_caps;
 	struct v4l2_format vid_format;
@@ -37,7 +37,7 @@ int loopback_init(const char* device, int w, int h, int debug) {
 	int fdwr = 0;
 	int ret_code = 0;
 
-	fdwr = open(device, O_RDWR);
+	fdwr = open(device.c_str(), O_RDWR);
 	if(fdwr < 0) {
 		fprintf(stderr, "%s:%d(%s): Failed to open video device: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
 		return -1;
@@ -83,19 +83,19 @@ int loopback_init(const char* device, int w, int h, int debug) {
 
 int main(int argc, char* argv[]) {
 
-	char* video_device = "/dev/video1";
+	std::string video_device("/dev/video1");
 
 	size_t linewidth = FRAME_WIDTH  * 2;
 	size_t framesize = FRAME_HEIGHT * linewidth;
 
 	if(argc>1) {
 		video_device=argv[1];
-		printf("using output device: %s\n", video_device);
+		printf("using output device: %s\n", video_device.c_str());
 	}
 
 	int fdwr = loopback_init(video_device,FRAME_WIDTH,FRAME_HEIGHT);
 	if(fdwr < 0) {
-		fprintf(stderr, "Failed to initialize output device %s\n", video_device);
+		fprintf(stderr, "Failed to initialize output device %s\n", video_device.c_str());
 		exit(1);
 	}
 

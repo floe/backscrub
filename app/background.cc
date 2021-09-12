@@ -99,7 +99,7 @@ static void drop_background(background_t *pbkd) {
     delete pbkd;
 }
 
-std::shared_ptr<background_t> load_background(const char *path, int debug) {
+std::shared_ptr<background_t> load_background(const std::string& path, int debug) {
     // allocate a shared pointer around storage for the handle, associate custom deleter to clean up when eventually released
     auto pbkd = std::shared_ptr<background_t>(new background_t, drop_background);
     try {
@@ -108,7 +108,7 @@ std::shared_ptr<background_t> load_background(const char *path, int debug) {
         pbkd->run = false;
         pbkd->cap.open(path, cv::CAP_ANY);    // explicitly ask for auto-detection of backend
         if (!pbkd->cap.isOpened()) {
-            if (pbkd->dbg) fprintf(stderr, "background: cap cannot open: %s\n", path);
+            if (pbkd->dbg) fprintf(stderr, "background: cap cannot open: %s\n", path.c_str());
             return nullptr;
         }
         pbkd->cap.set(cv::CAP_PROP_CONVERT_RGB, true);
@@ -133,7 +133,7 @@ std::shared_ptr<background_t> load_background(const char *path, int debug) {
             pbkd->cap.release();
             pbkd->raw = cv::imread(path);
             if (pbkd->raw.empty()) {
-                if (pbkd->dbg) fprintf(stderr, "background: imread cannot open: %s\n", path);
+                if (pbkd->dbg) fprintf(stderr, "background: imread cannot open: %s\n", path.c_str());
                 return nullptr;
             }
         }
