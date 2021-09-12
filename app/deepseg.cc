@@ -509,7 +509,7 @@ int main(int argc, char* argv[]) try {
 	// default green screen background
 	cv::Mat bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 
-	int lbfd = loopback_init(s_vcam.c_str(),width,height,debug);
+	int lbfd = loopback_init(s_vcam,width,height,debug);
 	if(lbfd < 0) {
 		fprintf(stderr, "Failed to initialize vcam device.\n");
 		exit(1);
