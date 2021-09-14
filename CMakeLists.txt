@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 project(backscrub CXX)
 
+# globally set C++17 as default for compilation
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # allow override of Tensorflow location
 if(NOT DEFINED TENSORFLOW)
   set(TENSORFLOW tensorflow)
