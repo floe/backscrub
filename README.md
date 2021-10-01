@@ -34,9 +34,9 @@ First, load the v4l2loopback module (extra settings needed to make Chrome work):
 ```
 sudo modprobe v4l2loopback devices=1 max_buffers=2 exclusive_caps=1 card_label="VirtualCam" video_nr=10
 ```
-Then, run deepseg (-d -d for full debug, -c for capture device, -v for virtual device):
+Then, run backscrub (-d -d for full debug, -c for capture device, -v for virtual device):
 ```
-./deepseg -d -d -c /dev/video0 -v /dev/video10
+./backscrub -d -d -c /dev/video0 -v /dev/video10
 ```
 
 Some cameras (like e.g. `Logitec Brio`) need to switch the video source to `MJPG` by passing `-f MJPG` in order for higher resolutions to become available for use.
@@ -179,3 +179,7 @@ See [Issues](https://github.com/floe/backscrub/issues) and [Pull Requests](https
 ## Other links
 
 Firefox preferred formats: https://searchfox.org/mozilla-central/source/third_party/libwebrtc/webrtc/modules/video_capture/linux/video_capture_linux.cc#142-159
+
+## Feeding obs-studio
+
+[We have been notified](https://github.com/floe/backscrub/issues/105) that some snap packaged versions of `obs-studio` are unable to detect/use a virtual camera as provided by `backscrub`. Please check the details for workarounds if this applies to you.
