@@ -24,7 +24,7 @@ Clone this repository with `git clone --recursive https://github.com/floe/backsc
 To speed up the checkout you can additionally pass `--depth=1` to `git clone`.
 This is okay, if you only want to download and build the code, however, for development it is not recommended.
 
-Use `cmake` to build the project: create a subfolder (e.g. `build`), change to that folder and run: `cmake .. && make -j $(nproc)`.
+Use `cmake` to build the project: create a subfolder (e.g. `build`), change to that folder and run: `cmake .. && make -j $(nproc || echo 4)`.
 
 **Deprecated**: Another option to build everything is to run `make` in the root directory of the repository. While this will download and build all dependencies, it comes with a few drawbacks like missing support for XNNPACK. Also this might break with newer versions of Tensorflow Lite as upstream support for this option has been removed. Use at you own risk.
 
