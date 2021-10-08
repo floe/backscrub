@@ -24,7 +24,7 @@ Clone this repository with `git clone --recursive https://github.com/floe/backsc
 To speed up the checkout you can additionally pass `--depth=1` to `git clone`.
 This is okay, if you only want to download and build the code, however, for development it is not recommended.
 
-Use `cmake` to build the project: create a subfolder (e.g. `build`), change to that folder and run: `cmake .. && make -j4` (please replace "4" with the number of your cores).
+Use `cmake` to build the project: create a subfolder (e.g. `build`), change to that folder and run: `cmake .. && make -j $(nproc || echo 4)`.
 
 **Deprecated**: Another option to build everything is to run `make` in the root directory of the repository. While this will download and build all dependencies, it comes with a few drawbacks like missing support for XNNPACK. Also this might break with newer versions of Tensorflow Lite as upstream support for this option has been removed. Use at you own risk.
 
@@ -34,9 +34,9 @@ First, load the v4l2loopback module (extra settings needed to make Chrome work):
 ```
 sudo modprobe v4l2loopback devices=1 max_buffers=2 exclusive_caps=1 card_label="VirtualCam" video_nr=10
 ```
-Then, run backscrub (-d -d for full debug, -c for capture device, -v for virtual device):
+Then, run backscrub (-d -d for full debug, -c for capture device, -v for virtual device, -b for wallpaper):
 ```
-./backscrub -d -d -c /dev/video0 -v /dev/video10
+./backscrub -d -d -c /dev/video0 -v /dev/video10 -b ~/wallpapers/forest.jpg
 ```
 
 Some cameras (like e.g. `Logitec Brio`) need to switch the video source to `MJPG` by passing `-f MJPG` in order for higher resolutions to become available for use.
