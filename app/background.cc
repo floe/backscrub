@@ -174,6 +174,6 @@ int grab_thumbnail(std::shared_ptr<background_t> pbkd, cv::Mat &out) {
     if (!pbkd)
         return -1;
     std::unique_lock<std::mutex> hold(pbkd->mtm);
-    pbkd->thm.copyTo(out);
+    out = pbkd->thm.clone();
     return 0;
 }
