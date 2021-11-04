@@ -331,6 +331,8 @@ int main(int argc, char* argv[]) try {
 	ti.bootns = timestamp();
 	int debug  = 0;
 	bool showProgress = false;
+	bool showBackground = true;
+	bool showFPS = true;
 	size_t threads= 2;
 	size_t width  = 640;
 	size_t height = 480;
@@ -630,9 +632,22 @@ int main(int argc, char* argv[]) try {
 
 		cv::Mat test;
 		cv::cvtColor(raw,test,cv::COLOR_YUV2BGR_YUYV);
-		char status[80];
-		snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
-		cv::putText(test, status, cv::Point(5,test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+		if (showFPS) {
+			char status[80];
+			snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
+			cv::putText(test, status, cv::Point(5,test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+		}
+		// background as pic-in-pic
+		if (showBackground && pbk) {
+			cv::Mat thumb;
+			grab_thumbnail(pbk, thumb);
+			if (!thumb.empty()) {
+				cv::Rect r = cv::Rect(0,0,thumb.cols,thumb.rows);
+				cv::Mat tri = test(r);
+				thumb.copyTo(tri);
+				cv::rectangle(tri, r, cv::Scalar(255,255,255));
+			}
+		}
 		cv::imshow(DEBUG_WIN_NAME,test);
 
 		auto keyPress = cv::waitKey(1);
@@ -648,6 +663,12 @@ int main(int argc, char* argv[]) try {
 				break;
 			case 'v':
 				flipVertical = !flipVertical;
+				break;
+			case 'f':
+				showFPS = !showFPS;
+				break;
+			case 'b':
+				showBackground = !showBackground;
 				break;
 		}
 	}

@@ -18,8 +18,10 @@ struct background_t {
     int frm;
     double fps;
     cv::Mat raw;
+    cv::Mat thm;
     std::thread thr;
     std::mutex mux;
+    std::mutex mtm;
 };
 
 // Internal video reader thread
@@ -27,7 +29,6 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
     if (pbkd->dbg) fprintf(stderr, "background: thread start\n");
     auto last = std::chrono::steady_clock::now();
     auto proc = last;
-    double min=0.0, max=0.0;
     while (pbkd->run) {
         // read new frame - we use a temporary buffer for two reasons:
         // - we can read unlocked, thus we are not impacted by blocking backends (eg: V4L2)
@@ -42,21 +43,20 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
             }
             // grab timing point
             auto now = std::chrono::steady_clock::now();
-            // display thumbnail frame with overlay info if double debug enabled
+            // generate thumbnail frame with overlay info if double debug enabled
             if (pbkd->dbg > 1) {
                 char msg[40];
                 long nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(now-last).count();
                 double fps = 1e9/(double)nsec;
-                // allow a few settling frames..
-                if (pbkd->frm > 10) {
-                    min = (0.0==min || fps<min) ? fps : min;
-                    max = (0.0==max || fps>max) ? fps : max;
+                {
+                    std::unique_lock<std::mutex> hold(pbkd->mtm);
+                    cv::resize(grab, pbkd->thm, cv::Size(160,120));
+                    snprintf(msg, sizeof(msg), "FPS:%0.1f", fps);
+                    cv::putText(pbkd->thm, msg, cv::Point(5,15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+                    snprintf(msg, sizeof(msg), "FRM:%05d", fps, pbkd->frm);
+                    cv::putText(pbkd->thm, msg, cv::Point(5,30), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+                    cv::putText(pbkd->thm, "Background", cv::Point(5,pbkd->thm.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
                 }
-                snprintf(msg, sizeof(msg), "FPS:%0.1f<%0.1f<%0.1f FRM:%05d", min, fps, max, pbkd->frm);
-                cv::Mat frame;
-                cv::resize(grab, frame, cv::Size(320,240));
-                cv::putText(frame, msg, cv::Point(5,frame.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
-                cv::imshow("Background", frame);
             }
             last = now;
             // wait for next frame, some sources are real-time, others are not, this ensures all play in real-time.
@@ -92,6 +92,7 @@ static void drop_background(background_t *pbkd) {
         // clean up
         pbkd->cap.release();
         pbkd->raw.release();
+        pbkd->thm.release();
     } else {
         // clean up
         pbkd->raw.release();
@@ -167,4 +168,12 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
         frm = 1;
     }
     return frm;
+}
+
+int grab_thumbnail(std::shared_ptr<background_t> pbkd, cv::Mat &out) {
+    if (!pbkd)
+        return -1;
+    std::unique_lock<std::mutex> hold(pbkd->mtm);
+    pbkd->thm.copyTo(out);
+    return 0;
 }
