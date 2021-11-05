@@ -638,7 +638,7 @@ int main(int argc, char* argv[]) try {
 		if (showFPS) {
 			char status[80];
 			snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
-			cv::putText(test, status, cv::Point(5,test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+			cv::putText(test, status, cv::Point(5,test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
 		}
 		// keyboard help
 		if (showHelp) {
@@ -654,7 +654,7 @@ int main(int argc, char* argv[]) try {
 				" ?: toggle this help text on/off"
 			};
 			for (int i=0; i<sizeof(help)/sizeof(char*); i++) {
-				cv::putText(test, help[i], cv::Point(10,test.rows/2+i*15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+				cv::putText(test, help[i], cv::Point(10,test.rows/2+i*15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
 			}
 		}
 		// background as pic-in-pic
@@ -678,7 +678,7 @@ int main(int argc, char* argv[]) try {
 				cv::Mat mri = test(r);
 				cmask.copyTo(mri);
 				cv::rectangle(test, r, cv::Scalar(255,255,255));
-				cv::putText(test, "Mask", cv::Point(width-155,115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+				cv::putText(test, "Mask", cv::Point(width-155,115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
 			}
 		}
 		cv::imshow(DEBUG_WIN_NAME,test);

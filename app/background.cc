@@ -52,10 +52,10 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
                     std::unique_lock<std::mutex> hold(pbkd->thumbmux);
                     cv::resize(grab, pbkd->thumb, cv::Size(160,120));
                     snprintf(msg, sizeof(msg), "FPS:%0.1f", fps);
-                    cv::putText(pbkd->thumb, msg, cv::Point(5,15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+                    cv::putText(pbkd->thumb, msg, cv::Point(5,15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
                     snprintf(msg, sizeof(msg), "FRM:%05d", fps, pbkd->frame);
-                    cv::putText(pbkd->thumb, msg, cv::Point(5,30), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
-                    cv::putText(pbkd->thumb, "Background", cv::Point(5,pbkd->thumb.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+                    cv::putText(pbkd->thumb, msg, cv::Point(5,30), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+                    cv::putText(pbkd->thumb, "Background", cv::Point(5,pbkd->thumb.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
                 }
             }
             last = now;
