@@ -642,18 +642,18 @@ int main(int argc, char* argv[]) try {
 		}
 		// keyboard help
 		if (showHelp) {
-			static const char *help[] = {
+			static const std::string help[] = {
 				"Keyboard help:",
-				" q: Quit",
-				" s: Switch filter on/off",
-				" h: toggle Horizontal flip",
-				" v: toggle Vertical flip",
+				" q: quit",
+				" s: switch filter on/off",
+				" h: toggle horizontal flip",
+				" v: toggle vertical flip",
 				" f: toggle FPS display on/off",
-				" b: toggle Background display on/off",
-				" m: toggle Mask display on/off",
+				" b: toggle background display on/off",
+				" m: toggle mask display on/off",
 				" ?: toggle this help text on/off"
 			};
-			for (int i=0; i<sizeof(help)/sizeof(char*); i++) {
+			for (int i=0; i<sizeof(help)/sizeof(std::string); i++) {
 				cv::putText(test, help[i], cv::Point(10,test.rows/2+i*15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
 			}
 		}

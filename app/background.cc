@@ -18,10 +18,10 @@ struct background_t {
     int frame;
     double fps;
     cv::Mat raw;
-    cv::Mat thumb;
-    std::thread thread;
     std::mutex rawmux;
+    cv::Mat thumb;
     std::mutex thumbmux;
+    std::thread thread;
 };
 
 // Internal video reader thread
@@ -48,14 +48,17 @@ static void read_thread(std::shared_ptr<background_t> pbkd) {
                 char msg[40];
                 long nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(now-last).count();
                 double fps = 1e9/(double)nsec;
+                cv::Mat thumb;
+                int theight = (grab.rows*160)/grab.cols;
+                cv::resize(grab, thumb, cv::Size(160, theight));
+                snprintf(msg, sizeof(msg), "FPS:%0.1f", fps);
+                cv::putText(thumb, msg, cv::Point(5, 15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
+                snprintf(msg, sizeof(msg), "FRM:%05d", fps, pbkd->frame);
+                cv::putText(thumb, msg, cv::Point(5, 30), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
+                cv::putText(thumb, "Background", cv::Point(5, pbkd->thumb.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
                 {
                     std::unique_lock<std::mutex> hold(pbkd->thumbmux);
-                    cv::resize(grab, pbkd->thumb, cv::Size(160,120));
-                    snprintf(msg, sizeof(msg), "FPS:%0.1f", fps);
-                    cv::putText(pbkd->thumb, msg, cv::Point(5,15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
-                    snprintf(msg, sizeof(msg), "FRM:%05d", fps, pbkd->frame);
-                    cv::putText(pbkd->thumb, msg, cv::Point(5,30), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
-                    cv::putText(pbkd->thumb, "Background", cv::Point(5,pbkd->thumb.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+                    pbkd->thumb = thumb;
                 }
             }
             last = now;
