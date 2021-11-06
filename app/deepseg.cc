@@ -33,7 +33,7 @@
 #error No INSTALL_PREFIX defined at compile time
 #endif
 
-#define DEBUG_WIN_NAME "Backscrub " _STR(DEEPSEG_VERSION)
+#define DEBUG_WIN_NAME "Backscrub " _STR(DEEPSEG_VERSION) " ('?' for help)"
 
 int fourCcFromString(const std::string& in)
 {
@@ -331,6 +331,10 @@ int main(int argc, char* argv[]) try {
 	ti.bootns = timestamp();
 	int debug  = 0;
 	bool showProgress = false;
+	bool showBackground = true;
+	bool showMask = true;
+	bool showFPS = true;
+	bool showHelp = false;
 	size_t threads= 2;
 	size_t width  = 640;
 	size_t height = 480;
@@ -630,9 +634,53 @@ int main(int argc, char* argv[]) try {
 
 		cv::Mat test;
 		cv::cvtColor(raw,test,cv::COLOR_YUV2BGR_YUYV);
-		char status[80];
-		snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
-		cv::putText(test, status, cv::Point(5,test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,0));
+		// frame rates at the bottom
+		if (showFPS) {
+			char status[80];
+			snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
+			cv::putText(test, status, cv::Point(5,test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+		}
+		// keyboard help
+		if (showHelp) {
+			static const std::string help[] = {
+				"Keyboard help:",
+				" q: quit",
+				" s: switch filter on/off",
+				" h: toggle horizontal flip",
+				" v: toggle vertical flip",
+				" f: toggle FPS display on/off",
+				" b: toggle background display on/off",
+				" m: toggle mask display on/off",
+				" ?: toggle this help text on/off"
+			};
+			for (int i=0; i<sizeof(help)/sizeof(std::string); i++) {
+				cv::putText(test, help[i], cv::Point(10,test.rows/2+i*15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+			}
+		}
+		// background as pic-in-pic
+		if (showBackground && pbk) {
+			cv::Mat thumb;
+			grab_thumbnail(pbk, thumb);
+			if (!thumb.empty()) {
+				cv::Rect r = cv::Rect(0,0,thumb.cols,thumb.rows);
+				cv::Mat tri = test(r);
+				thumb.copyTo(tri);
+				cv::rectangle(test, r, cv::Scalar(255,255,255));
+			}
+		}
+		// mask as pic-in-pic
+		if (showMask) {
+			if (!mask.empty()) {
+				cv::Mat smask, cmask;
+				cv::resize(mask, smask, cv::Size(160,120));
+				cv::cvtColor(smask, cmask, cv::COLOR_GRAY2BGR);
+				cv::Rect r = cv::Rect(width-160,0,160,120);
+				cv::Mat mri = test(r);
+				cmask.copyTo(mri);
+				cv::rectangle(test, r, cv::Scalar(255,255,255));
+				cv::putText(test, "Mask", cv::Point(width-155,115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+			}
+		}
 		cv::imshow(DEBUG_WIN_NAME,test);
 
 		auto keyPress = cv::waitKey(1);
@@ -648,6 +696,18 @@ int main(int argc, char* argv[]) try {
 				break;
 			case 'v':
 				flipVertical = !flipVertical;
+				break;
+			case 'f':
+				showFPS = !showFPS;
+				break;
+			case 'b':
+				showBackground = !showBackground;
+				break;
+			case 'm':
+				showMask = !showMask;
+				break;
+			case '?':
+				showHelp = !showHelp;
 				break;
 		}
 	}

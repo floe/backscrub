@@ -18,4 +18,8 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
 // NB: current frame can loop round to 0!
 int grab_background(std::shared_ptr<background_t> handle, int width, int height, cv::Mat &out);
 
+// Grab current thumbnail image (if any) from background
+// Returns <0 on error, 0 on success and copies thumbnail to out
+int grab_thumbnail(std::shared_ptr<background_t> handle, cv::Mat &out);
+
 #endif
