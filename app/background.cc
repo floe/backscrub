@@ -25,7 +25,7 @@ struct background_t {
 };
 
 // Internal video reader thread
-static void read_thread(std::shared_ptr<background_t> pbkd) {
+static void read_thread(background_t *pbkd) {
     if (pbkd->debug) fprintf(stderr, "background: thread start\n");
     auto last = std::chrono::steady_clock::now();
     auto next = last;
@@ -131,7 +131,7 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
                 pbkd->frame = 2;    // unable to reset, so we're 2 frames in
             pbkd->video = true;
             pbkd->run = true;
-            pbkd->thread = std::thread(read_thread, pbkd);
+            pbkd->thread = std::thread(read_thread, pbkd.get());
         } else {
             // static image file, try loading..
             pbkd->cap.release();
