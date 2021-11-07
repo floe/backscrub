@@ -25,11 +25,28 @@ struct background_t {
 };
 
 // Internal video reader thread
-static void read_thread(background_t *pbkd) {
-    if (pbkd->debug) fprintf(stderr, "background: thread start\n");
+// we use a std::weak_ptr here to avoid an ownership cycle of the background_t *
+static void read_thread(std::weak_ptr<background_t> weak) {
+    bool run;
+    int debug;
+    if (auto pbkd = weak.lock()) {
+        debug = pbkd->debug;
+        run = pbkd->run;
+    } else {
+        // pointer has gone.. so do we!
+        run = false;
+    }
+    if (debug)
+        fprintf(stderr, "background: thread start\n");
     auto last = std::chrono::steady_clock::now();
     auto next = last;
-    while (pbkd->run) {
+    while (run) {
+        // each time round the loop, we must acquire ownership of the background_t *
+        auto pbkd = weak.lock();
+        if (!pbkd)
+            break;
+        // update run state
+        run = pbkd->run;
         // read new frame - we use a temporary buffer for two reasons:
         // - we can read unlocked, thus we are not impacted by blocking backends (eg: V4L2)
         // - we preserve the last frame for callers, such that if a video ends, they always have a frame to use
@@ -44,7 +61,7 @@ static void read_thread(background_t *pbkd) {
             // grab timing point
             auto now = std::chrono::steady_clock::now();
             // generate thumbnail frame with overlay info if double debug enabled
-            if (pbkd->debug > 1) {
+            if (debug > 1) {
                 char msg[40];
                 long nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(now-last).count();
                 double fps = 1e9/(double)nsec;
@@ -64,6 +81,9 @@ static void read_thread(background_t *pbkd) {
             last = now;
             // wait for next frame, some sources are real-time, others are not, this ensures all play in real-time.
             next += std::chrono::nanoseconds((long)(1e9/pbkd->fps));
+            // if sleeping, drop ownership of the pointer early
+            if (now < next)
+                pbkd.reset();
             while (now < next) {
                 std::this_thread::sleep_until(next);
                 now = std::chrono::steady_clock::now();
@@ -75,12 +95,12 @@ static void read_thread(background_t *pbkd) {
                 pbkd->frame = 0;
             } else {
                 // unable to reset or previous attempt produced no more frames - stop
-                if (pbkd->debug) fprintf(stderr, "background: thread stopping at end of stream and not resettable\n");
+                if (debug) fprintf(stderr, "background: thread stopping at end of stream and not resettable\n");
                 break;
             }
         }
     }
-    if (pbkd->debug) fprintf(stderr, "background: thread stop\n");
+    if (debug) fprintf(stderr, "background: thread stop\n");
 }
 
 static void drop_background(background_t *pbkd) {
@@ -131,7 +151,7 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
                 pbkd->frame = 2;    // unable to reset, so we're 2 frames in
             pbkd->video = true;
             pbkd->run = true;
-            pbkd->thread = std::thread(read_thread, pbkd.get());
+            pbkd->thread = std::thread(read_thread, std::weak_ptr<background_t>(pbkd));
         } else {
             // static image file, try loading..
             pbkd->cap.release();
