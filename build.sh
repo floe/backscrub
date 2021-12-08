@@ -15,7 +15,7 @@ then
 fi
 
 # Get the root directory of the repository
-wd="$(cd "$(dirname $0)" || exit 1; pwd)"
+wd="$(cd "$(dirname "$0")" || exit 1; pwd)"
 
 echo "working directory: $wd"
 cd "$wd"
