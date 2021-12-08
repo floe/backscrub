@@ -66,7 +66,7 @@ echo "All done. You can run backscrub like this:"
 echo "    cd \"$wd/build\" && ./backscrub -h"
 echo ""
 echo "Or you can add the following line to your ~/.bashrc, to get a backscrub command:"
-echo "backscrub() { pushd \"$wd/build\" > /dev/null && { ./backscrub \"\$@\"; popd > /dev/null; }; }"
+echo "backscrub() { ( cd \"$wd/build\" && ./backscrub \"\$@\" ) }"
 
 
 )
