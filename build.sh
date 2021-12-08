@@ -28,17 +28,19 @@ echo ""
 
 
 # Backup the current build directory (if present)
+
+backup_dir="$(mktemp -d)"
+
 if [[ -d "./build" ]]
 then
   echo "Backing up build directory..."
-  [[ ! -d "./build_bk" ]] || rm -rf "./build_bk"
-  mv ./build ./build_bk
+  mv ./build "$backup_dir/build"
   echo "..done"
   echo ""
 fi
 
 # Restore the backup on error
-trap 'rm -rf ./build && mv ./build_bk ./build' SIGHUP SIGINT SIGTERM
+trap "rm -rf ./build && mv $backup_dir/build ./build" SIGHUP SIGINT SIGTERM
 
 # Abort on errors
 set -e
@@ -58,7 +60,7 @@ echo ""
 
 echo "Cleaning up..."
 # Delete the backup on success
-[[ ! -d "./build_bk" ]] || rm -rf "./build_bk"
+rm -rf "$backup_dir/build"
 echo "..done"
 echo ""
 
