@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-(
 # Abort on errors
 set -e
 
@@ -27,7 +26,6 @@ echo "Fetching latest version..."
 [[ " $* " =~ " --no-update" ]] || git pull --recurse-submodules
 echo "..done"
 echo ""
-
 
 # Backup the current build directory (if present)
 backup_dir="$(mktemp -d)"
@@ -83,5 +81,4 @@ echo ""
 echo "Or you can add the following line to your ~/.bashrc, to get a backscrub command:"
 echo "backscrub() { ( cd \"$wd/build\" && ./backscrub \"\$@\" ) }"
 
-)
 
