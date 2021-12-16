@@ -46,7 +46,10 @@ struct backscrub_ctx_t {
 	cv::Mat mroi;
 	cv::Mat ofinal;
 	cv::Size blur;
+	cv::Mat in_u8_bgr;
+	cv::Rect in_roidim;
 	float ratio;
+	float frameratio;
 };
 
 // Debug helper
@@ -223,12 +226,24 @@ void *bs_maskgen_new(
 		bs_maskgen_delete(pctx);
 		return nullptr;
 	}
-	ctx.ratio = (float)ctx.input.cols/(float) ctx.input.rows;
+	ctx.ratio = (float)ctx.input.rows/(float) ctx.input.cols;
+	ctx.frameratio = (float)height/(float)width;
 
 	// initialize mask and model-aspect ROI in center
-	ctx.roidim = cv::Rect((width-height/ctx.ratio)/2,0,height/ctx.ratio,height);
+	if (ctx.frameratio < ctx.ratio) {
+		// if frame is wider than model, then use only the frame center
+		ctx.roidim = cv::Rect((width-height/ctx.ratio)/2,0,height/ctx.ratio,height);
+		ctx.in_roidim = cv::Rect(0, 0, ctx.input.cols, ctx.input.rows);
+	} else {
+		// if model is wider than the frame, center the frame in the model
+		ctx.roidim = cv::Rect(0, 0, width, height);
+		ctx.in_roidim = cv::Rect((ctx.input.cols-ctx.input.rows/ctx.frameratio)/2, 0, ctx.input.rows/ctx.frameratio,ctx.input.rows);
+	}
+
 	ctx.mask = cv::Mat::ones(height,width,CV_8UC1)*255;
 	ctx.mroi = ctx.mask(ctx.roidim);
+
+	ctx.in_u8_bgr = cv::Mat(ctx.input.rows, ctx.input.cols, CV_8UC3, cv::Scalar(0, 0, 0));
 
 	// mask blurring size
 	ctx.blur = cv::Size(5,5);
@@ -264,10 +279,11 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 	// map ROI
 	cv::Mat roi = frame(ctx.roidim);
 
-	// resize ROI to input size
-	cv::Mat in_u8_bgr, in_u8_rgb;
-	cv::resize(roi,in_u8_bgr,cv::Size(ctx.input.cols,ctx.input.rows));
-	cv::cvtColor(in_u8_bgr,in_u8_rgb,cv::COLOR_BGR2RGB);
+	cv::Mat in_u8_rgb;
+	cv::Mat in_roi = ctx.in_u8_bgr(ctx.in_roidim);
+	cv::resize(roi,in_roi,ctx.in_roidim.size());
+	cv::cvtColor(ctx.in_u8_bgr,in_u8_rgb,cv::COLOR_BGR2RGB);
+
 	// TODO: can convert directly to float?
 
 	// bilateral filter to reduce noise
@@ -344,7 +360,7 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 
 	// scale up into full-sized mask
 	cv::Mat tmpbuf;
-	cv::resize(ctx.ofinal,tmpbuf,cv::Size(frame.rows/ctx.ratio,frame.rows));
+	cv::resize(ctx.ofinal(ctx.in_roidim),tmpbuf,ctx.mroi.size());
 
 	// blur at full size for maximum smoothness
 	cv::blur(tmpbuf,ctx.mroi,ctx.blur);
