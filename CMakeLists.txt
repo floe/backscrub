@@ -56,8 +56,9 @@ add_subdirectory(${TENSORFLOW}/tensorflow/lite
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
 
 # build backscrub code
-add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION})
+add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION} INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
 include_directories(BEFORE .)
+set(CMAKE_CXX_STANDARD 17)
 
 add_library(backscrub
   lib/libbackscrub.cc
@@ -78,6 +79,7 @@ target_link_libraries(videoio)
 
 add_executable(deepseg
   app/deepseg.cc
+  app/background.cc
 )
 
 set_target_properties(deepseg PROPERTIES OUTPUT_NAME backscrub)
@@ -135,12 +137,15 @@ export(TARGETS
   ${BACKSCRUB_DEPS}
   FILE BackscrubTargets.cmake)
 
-# installation names for library, header and models
+# installation names for library, header, backgrounds and models
 if(NOT WIN32)
 install(TARGETS deepseg)
 endif()
 install(TARGETS backscrub)
 install(FILES lib/libbackscrub.h DESTINATION include/backscrub)
+install(DIRECTORY backgrounds
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/share/backscrub
+  FILES_MATCHING PATTERN "*.jpg" PATTERN "*.png" PATTERN "*.gif" PATTERN "*.webm")
 install(DIRECTORY models
   DESTINATION ${CMAKE_INSTALL_PREFIX}/share/backscrub
   FILES_MATCHING PATTERN "*.tflite" PATTERN "*.md")

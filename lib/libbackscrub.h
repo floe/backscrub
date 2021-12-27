@@ -12,7 +12,7 @@
 // Return a new (opaque) mask generation context
 extern void *bs_maskgen_new(
 	// Required parameters
-	const char *modelname,
+	const std::string& modelname,
 	size_t threads,
 	size_t width,
 	size_t height,

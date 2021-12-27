@@ -8,6 +8,10 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <fstream>
+#include <istream>
+#include <regex>
+#include <optional>
 #include <condition_variable>
 
 #include <opencv2/core/core.hpp>
@@ -17,11 +21,19 @@
 
 #include "videoio/loopback.h"
 #include "lib/libbackscrub.h"
+#include "background.h"
 
 // Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
 // http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).
 #define __STR(X) #X
 #define _STR(X) __STR(X)
+
+// Ensure we have a default search location for resource files
+#ifndef INSTALL_PREFIX
+#error No INSTALL_PREFIX defined at compile time
+#endif
+
+#define DEBUG_WIN_NAME "Backscrub " _STR(DEEPSEG_VERSION) " ('?' for help)"
 
 int fourCcFromString(const std::string& in)
 {
@@ -50,9 +62,9 @@ int fourCcFromString(const std::string& in)
 // OpenCV helper functions
 cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
 	cv::Mat tmp;
-	cv::cvtColor(input,tmp,cv::COLOR_RGB2YUV);
+	cv::cvtColor(input, tmp, cv::COLOR_RGB2YUV);
 	std::vector<cv::Mat> yuv;
-	cv::split(tmp,yuv);
+	cv::split(tmp, yuv);
 	cv::Mat yuyv(tmp.rows, tmp.cols, CV_8UC2);
 	uint8_t* outdata = (uint8_t*)yuyv.data;
 	uint8_t* ydata = (uint8_t*)yuv[0].data;
@@ -73,22 +85,22 @@ cv::Mat alpha_blend(cv::Mat srca, cv::Mat srcb, cv::Mat mask) {
 	// alpha blend two (8UC3) source images using a mask (8UC1, 255=>srca, 0=>srcb), adapted from:
 	// https://www.learnopencv.com/alpha-blending-using-opencv-cpp-python/
 	// "trust no-one" => we're about to mess with data pointers
-	assert(srca.rows==srcb.rows);
-	assert(srca.cols==srcb.cols);
-	assert(mask.rows==srca.rows);
-	assert(mask.cols==srca.cols);
-	assert(srca.type()==CV_8UC3);
-	assert(srcb.type()==CV_8UC3);
-	assert(mask.type()==CV_8UC1);
+	assert(srca.rows == srcb.rows);
+	assert(srca.cols == srcb.cols);
+	assert(mask.rows == srca.rows);
+	assert(mask.cols == srca.cols);
+	assert(srca.type() == CV_8UC3);
+	assert(srcb.type() == CV_8UC3);
+	assert(mask.type() == CV_8UC1);
 	cv::Mat out = cv::Mat::zeros(srca.size(), srca.type());
 	uint8_t *optr = (uint8_t*)out.data;
 	uint8_t *aptr = (uint8_t*)srca.data;
 	uint8_t *bptr = (uint8_t*)srcb.data;
 	uint8_t *mptr = (uint8_t*)mask.data;
 	int npix = srca.rows * srca.cols;
-	for (int pix=0; pix<npix; ++pix) {
+	for (int pix = 0; pix < npix; ++pix) {
 		// blending weights
-		int aw=(int)(*mptr++), bw=255-aw;
+		int aw = (int)(*mptr++), bw = 255-aw;
 		// blend each channel byte
 		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
 		*optr++ = (uint8_t)(( (int)(*aptr++)*aw + (int)(*bptr++)*bw )/255);
@@ -162,7 +174,7 @@ protected:
 				frame_next = frame_current;
 				frame_current = raw_tmp;
 			}
-			waitns=diffnanosecs(timestamp(), t0);
+			waitns = diffnanosecs(timestamp(), t0);
 			t0 = timestamp();
 			if(!bs_maskgen_process(maskctx, *frame_current, *mask_current)) {
 				fprintf(stderr, "failed to process video frame\n");
@@ -182,17 +194,17 @@ protected:
 	// timing callbacks
 	static void onprep(void *ctx) {
 		CalcMask *cls = (CalcMask *)ctx;
-		cls->prepns=diffnanosecs(timestamp(), cls->t0);
+		cls->prepns = diffnanosecs(timestamp(), cls->t0);
 		cls->t0 = timestamp();
 	}
 	static void oninfer(void *ctx) {
 		CalcMask *cls = (CalcMask *)ctx;
-		cls->tfltns=diffnanosecs(timestamp(), cls->t0);
+		cls->tfltns = diffnanosecs(timestamp(), cls->t0);
 		cls->t0 = timestamp();
 	}
 	static void onmask(void *ctx) {
 		CalcMask *cls = (CalcMask *)ctx;
-		cls->maskns=diffnanosecs(timestamp(), cls->t0);
+		cls->maskns = diffnanosecs(timestamp(), cls->t0);
 		cls->t0 = timestamp();
 	}
 
@@ -203,11 +215,11 @@ public:
 	long maskns;
 	long loopns;
 
-	CalcMask(const char *modelname,
+	CalcMask(const std::string& modelname,
 			 size_t threads,
 			 size_t width,
 			 size_t height) {
-		maskctx = bs_maskgen_new(modelname,threads,width,height,nullptr,onprep,oninfer,onmask,this);
+		maskctx = bs_maskgen_new(modelname.c_str(), threads, width, height, nullptr, onprep, oninfer, onmask, this);
 		if (!maskctx)
 			throw "Could not create mask context";
 
@@ -223,7 +235,12 @@ public:
 	}
 
 	~CalcMask() {
+		// mark as done
 		state = thread_state::DONE;
+		// wake up processing thread
+		new_frame = true;
+		condition_new_frame.notify_all();
+		// collect termination
 		thread.join();
 		bs_maskgen_delete(maskctx);
 	}
@@ -248,66 +265,127 @@ static bool is_number(const std::string &s) {
 	return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
 }
 
+std::optional<std::string> resolve_path(const std::string& provided, const std::string& type) {
+	std::string result;
+	// Check for network (URI) schema and return as-is
+	// https://www.rfc-editor.org/rfc/rfc3986#section-3.1
+	// however we require at least two chars in the scheme to allow driver letters to work on Windows..
+	if (std::regex_match(provided, std::regex("^[[:alpha:]][[:alnum:]+-.]{1,}:.*$")))
+		return provided;
+	// We use std::ifstream to check we can open each test path read-only, in order:
+	// 1. exactly what was provided
+	if (std::ifstream(provided).good())
+		return provided;
+	// to emulate PATH search behaviour (rule of least surprise), we stop here if provided has path separators
+	if (provided.find('/') != provided.npos)
+		return {};
+	// 2. BACKSCRUB_PATH prefixes if set
+	if (getenv("BACKSCRUB_PATH") != nullptr) {
+		// getline trick: https://stackoverflow.com/questions/5167625/splitting-a-c-stdstring-using-tokens-e-g
+		std::istringstream bsp(getenv("BACKSCRUB_PATH"));
+		while (std::getline(bsp, result, ':')) {
+			result += "/" + type + "/" + provided;
+			if (std::ifstream(result).good())
+				return result;
+		}
+	}
+	// 3. XDG standard data location
+	result = getenv("XDG_DATA_HOME") ? getenv("XDG_DATA_HOME") : std::string() + getenv("HOME") + "/.local/share";
+	result += "/backscrub/" + type + "/" + provided;
+	if (std::ifstream(result).good())
+		return result;
+	// 4. prefixed with compile-time install path
+	result = std::string() + _STR(INSTALL_PREFIX) + "/share/backscrub/" + type + "/" + provided;
+	if (std::ifstream(result).good())
+		return result;
+	// 5. relative to current binary location
+	// (https://stackoverflow.com/questions/933850/how-do-i-find-the-location-of-the-executable-in-c)
+	char binloc[1024];
+	ssize_t n = readlink("/proc/self/exe", binloc, sizeof(binloc));
+	if (n > 0) {
+		binloc[n] = 0;
+		result = binloc;
+		size_t pos = result.rfind('/');
+		pos = result.rfind('/', pos-1);
+		if (pos != result.npos) {
+			result.erase(pos);
+			result += "/share/backscrub/" + type + "/" + provided;
+			if (std::ifstream(result).good())
+				return result;
+			// development folder?
+			result.erase(pos);
+			result += "/" + type + "/" + provided;
+			if (std::ifstream(result).good())
+				return result;
+		}
+	}
+	return {};
+}
+
 int main(int argc, char* argv[]) try {
 
-	printf("backscrub version %s\n", _STR(DEEPSEG_VERSION));
+	printf("%s version %s\n", argv[0], _STR(DEEPSEG_VERSION));
 	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
 	printf("https://github.com/floe/backscrub\n");
 	timinginfo_t ti;
 	ti.bootns = timestamp();
-	int debug  = 0;
+	int debug = 0;
 	bool showProgress = false;
-	size_t threads= 2;
-	size_t width  = 640;
+	bool showBackground = true;
+	bool showMask = true;
+	bool showFPS = true;
+	bool showHelp = false;
+	size_t threads = 2;
+	size_t width = 640;
 	size_t height = 480;
-	const char *back = nullptr; // "images/background.png";
-	const char *vcam = "/dev/video0";
-	const char *ccam = "/dev/video1";
+	const char *back = nullptr;
+	const char *vcam = "/dev/video1";
+	const char *ccam = "/dev/video0";
 	bool flipHorizontal = false;
-	bool flipVertical   = false;
+	bool flipVertical = false;
 	int fourcc = 0;
 	size_t blur_strength = 0;
 
-	const char* modelname = "models/selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
+	const char* modelname = "selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
 
 	bool showUsage = false;
-	for (int arg=1; arg<argc; arg++) {
+	for (int arg = 1; arg < argc; arg++) {
 		bool hasArgument = arg+1 < argc;
-		if (strncmp(argv[arg], "-?", 2)==0) {
+		if (strncmp(argv[arg], "-?", 2) == 0) {
 			showUsage = true;
-		} else if (strncmp(argv[arg], "-d", 2)==0) {
+		} else if (strncmp(argv[arg], "-d", 2) == 0) {
 			++debug;
-		} else if (strncmp(argv[arg], "-s", 2)==0) {
+		} else if (strncmp(argv[arg], "-s", 2) == 0) {
 			showProgress = true;
-		} else if (strncmp(argv[arg], "-H", 2)==0) {
+		} else if (strncmp(argv[arg], "-H", 2) == 0) {
 			flipHorizontal = !flipHorizontal;
-		} else if (strncmp(argv[arg], "-V", 2)==0) {
+		} else if (strncmp(argv[arg], "-V", 2) == 0) {
 			flipVertical = !flipVertical;
-		} else if (strncmp(argv[arg], "-v", 2)==0) {
+		} else if (strncmp(argv[arg], "-v", 2) == 0) {
 			if (hasArgument) {
 				vcam = argv[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-c", 2)==0) {
+		} else if (strncmp(argv[arg], "-c", 2) == 0) {
 			if (hasArgument) {
 				ccam = argv[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-b", 2)==0) {
+		} else if (strncmp(argv[arg], "-b", 2) == 0) {
 			if (hasArgument) {
 				back = argv[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-m", 2)==0) {
+		} else if (strncmp(argv[arg], "-m", 2) == 0) {
 			if (hasArgument) {
 				modelname = argv[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-p", 2)==0) {
+		} else if (strncmp(argv[arg], "-p", 2) == 0) {
 			if (hasArgument) {
 				std::string option = argv[++arg];
 				std::string key = option.substr(0, option.find(":"));
@@ -330,7 +408,7 @@ int main(int argc, char* argv[]) try {
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-w", 2)==0) {
+		} else if (strncmp(argv[arg], "-w", 2) == 0) {
 			if (hasArgument && sscanf(argv[++arg], "%zu", &width)) {
 				if (!width) {
 					showUsage = true;
@@ -338,7 +416,7 @@ int main(int argc, char* argv[]) try {
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-h", 2)==0) {
+		} else if (strncmp(argv[arg], "-h", 2) == 0) {
 			if (hasArgument && sscanf(argv[++arg], "%zu", &height)) {
 				if (!height) {
 					showUsage = true;
@@ -346,7 +424,7 @@ int main(int argc, char* argv[]) try {
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-f", 2)==0) {
+		} else if (strncmp(argv[arg], "-f", 2) == 0) {
 			if (hasArgument) {
 				fourcc = fourCcFromString(argv[++arg]);
 				if (!fourcc) {
@@ -355,7 +433,7 @@ int main(int argc, char* argv[]) try {
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-t", 2)==0) {
+		} else if (strncmp(argv[arg], "-t", 2) == 0) {
 			if (hasArgument && sscanf(argv[++arg], "%zu", &threads)) {
 				if (!threads) {
 					showUsage = true;
@@ -371,7 +449,7 @@ int main(int argc, char* argv[]) try {
 	if (showUsage) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "usage:\n");
-		fprintf(stderr, "  deepseg [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
+		fprintf(stderr, "  backscrub [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
 		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>] [-p <option:value>]\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "-?            Display this usage information\n");
@@ -383,7 +461,9 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "-h            Specify the video stream height\n");
 		fprintf(stderr, "-f            Specify the camera video format, i.e. MJPG or 47504A4D.\n");
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
-		fprintf(stderr, "-b            Specify the background image\n");
+		fprintf(stderr, "-b            Specify the background (any local or network OpenCV source) e.g.\n");
+		fprintf(stderr, "                local:   backgrounds/total_landscaping.jpg\n");
+		fprintf(stderr, "                network: https://git.io/JE9o5\n");
 		fprintf(stderr, "-m            Specify the TFLite model used for segmentation\n");
 		fprintf(stderr, "-p            Add post-processing steps\n");
 		fprintf(stderr, "-p bgblur:<strength>   Blur the video background\n");
@@ -392,36 +472,54 @@ int main(int argc, char* argv[]) try {
 		exit(1);
 	}
 
+	std::string s_ccam(ccam);
+	std::string s_vcam(vcam);
+	// permit unprefixed device names
+	if (s_ccam.rfind("/dev/", 0) != 0)
+		s_ccam = "/dev/" + s_ccam;
+	if (s_vcam.rfind("/dev/", 0) != 0)
+		s_vcam = "/dev/" + s_vcam;
+	std::optional<std::string> s_model = resolve_path(modelname, "models");
+	std::optional<std::string> s_backg = back ? resolve_path(back, "backgrounds") : std::nullopt;
 	printf("debug:  %d\n", debug);
-	printf("ccam:   %s\n", ccam);
-	printf("vcam:   %s\n", vcam);
+	printf("ccam:   %s\n", s_ccam.c_str());
+	printf("vcam:   %s\n", s_vcam.c_str());
 	printf("width:  %zu\n", width);
 	printf("height: %zu\n", height);
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
 	printf("threads:%zu\n", threads);
-	printf("back:   %s\n", back ? back : "(none)");
-	printf("model:  %s\n\n", modelname);
+	printf("back:   %s => %s\n", back ? back : "(none)", s_backg ? s_backg.value().c_str() : "(none)");
+	printf("model:  %s => %s\n\n", modelname ? modelname : "(none)", s_model ? s_model.value().c_str() : "(none)");
 
-	cv::Mat bg;
-	if (back) {
-		bg = cv::imread(back);
+	// No model - stop here
+	if (!s_model) {
+		printf("Error: unable to load specified model: %s\n", modelname);
+		exit(1);
 	}
-	if (bg.empty()) {
-		if (back) {
+
+	// Create debug window early (ensures highgui is correctly initialised on this thread)
+	if (debug > 1) {
+		cv::namedWindow(DEBUG_WIN_NAME, cv::WINDOW_AUTOSIZE | cv::WINDOW_GUI_EXPANDED);
+	}
+
+	// Load background if specified
+	auto pbk(s_backg ? load_background(s_backg.value(), debug) : nullptr);
+	if (!pbk) {
+		if (s_backg) {
 			printf("Warning: could not load background image, defaulting to green\n");
 		}
-		bg = cv::Mat(height,width,CV_8UC3,cv::Scalar(0,255,0));
 	}
-	cv::resize(bg,bg,cv::Size(width,height));
+	// default green screen background
+	cv::Mat bg = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 255, 0));
 
-	int lbfd = loopback_init(vcam,width,height,debug);
+	int lbfd = loopback_init(s_vcam, width, height, debug);
 	if(lbfd < 0) {
 		fprintf(stderr, "Failed to initialize vcam device.\n");
 		exit(1);
 	}
 
-	cv::VideoCapture cap(ccam, cv::CAP_V4L2);
+	cv::VideoCapture cap(s_ccam.c_str(), cv::CAP_V4L2);
 	if(!cap.isOpened()) {
 		perror("failed to open video device");
 		exit(1);
@@ -435,7 +533,7 @@ int main(int argc, char* argv[]) try {
 
 	cv::Mat mask(height, width, CV_8U);
 	cv::Mat raw;
-	CalcMask ai(modelname, threads, width, height);
+	CalcMask ai(s_model.value(), threads, width, height);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -445,38 +543,51 @@ int main(int argc, char* argv[]) try {
 	for(bool running = true; running; ) {
 		// grab new frame from cam
 		cap.grab();
-		ti.grabns=timestamp();
+		ti.grabns = timestamp();
 		// copy new frame to buffer
 		cap.retrieve(raw);
-		ti.retrns=timestamp();
+		ti.retrns = timestamp();
 		ai.set_input_frame(raw);
-		ti.copyns=timestamp();
+		ti.copyns = timestamp();
 
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
-
-		if (blur_strength) {
-			raw.copyTo(bg);
-			cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength),0);
-		}
-		ti.prepns = timestamp();
 
 		if (filterActive) {
 			// do background detection magic
 			ai.get_output_mask(mask);
 
+			// get background frame:
+			// - specified source if set
+			// - copy of input video if blur_strength != 0
+			// - default green (initial value)
+			bool canBlur = false;
+			if (pbk) {
+				if (grab_background(pbk, width, height, bg)<0)
+					throw "Failed to read background frame";
+				canBlur = true;
+			} else if (blur_strength) {
+				raw.copyTo(bg);
+				canBlur = true;
+			}
+			// blur frame if requested (unless it's just green)
+			if (canBlur && blur_strength)
+				cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength), 0);
+			ti.prepns = timestamp();
 			// alpha blend background over foreground using mask
 			raw = alpha_blend(bg, raw, mask);
+		} else {
+			ti.prepns = timestamp();
 		}
 		ti.maskns = timestamp();
 
 		if (flipHorizontal && flipVertical) {
-			cv::flip(raw,raw,-1);
+			cv::flip(raw, raw, -1);
 		} else if (flipHorizontal) {
-			cv::flip(raw,raw,1);
+			cv::flip(raw, raw, 1);
 		} else if (flipVertical) {
-			cv::flip(raw,raw,0);
+			cv::flip(raw, raw, 0);
 		}
-		ti.postns=timestamp();
+		ti.postns = timestamp();
 
 		// write frame to v4l2loopback as YUYV
 		raw = convert_rgb_to_yuyv(raw);
@@ -500,6 +611,8 @@ int main(int argc, char* argv[]) try {
 		}
 
 		// timing details..
+		double mfps = 1e9/diffnanosecs(ti.v4l2ns,ti.lastns);
+		double afps = 1e9/ai.loopns;
 		printf("main [grab:%9ld retr:%9ld copy:%9ld prep:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f] ai: [wait:%9ld prep:%9ld tflt:%9ld mask:%9ld FPS: %5.2f] \e[K\r",
 			diffnanosecs(ti.grabns,ti.lastns),
 			diffnanosecs(ti.retrns,ti.grabns),
@@ -508,20 +621,69 @@ int main(int argc, char* argv[]) try {
 			diffnanosecs(ti.maskns,ti.prepns),
 			diffnanosecs(ti.postns,ti.maskns),
 			diffnanosecs(ti.v4l2ns,ti.postns),
-			1e9/diffnanosecs(ti.v4l2ns,ti.lastns),
+			mfps,
 			ai.waitns,
 			ai.prepns,
 			ai.tfltns,
 			ai.maskns,
-			1e9/ai.loopns
+			afps
 		);
 		fflush(stdout);
 		ti.lastns = timestamp();
-		if (debug < 2) continue;
+		if (debug < 2)
+			continue;
 
 		cv::Mat test;
 		cv::cvtColor(raw,test,cv::COLOR_YUV2BGR_YUYV);
-		cv::imshow("DeepSeg " _STR(DEEPSEG_VERSION),test);
+		// frame rates at the bottom
+		if (showFPS) {
+			char status[80];
+			snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
+			cv::putText(test, status, cv::Point(5, test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
+		}
+		// keyboard help
+		if (showHelp) {
+			static const std::string help[] = {
+				"Keyboard help:",
+				" q: quit",
+				" s: switch filter on/off",
+				" h: toggle horizontal flip",
+				" v: toggle vertical flip",
+				" f: toggle FPS display on/off",
+				" b: toggle background display on/off",
+				" m: toggle mask display on/off",
+				" ?: toggle this help text on/off"
+			};
+			for (int i=0; i<sizeof(help)/sizeof(std::string); i++) {
+				cv::putText(test, help[i], cv::Point(10,test.rows/2+i*15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+			}
+		}
+		// background as pic-in-pic
+		if (showBackground && pbk) {
+			cv::Mat thumb;
+			grab_thumbnail(pbk, thumb);
+			if (!thumb.empty()) {
+				cv::Rect r = cv::Rect(0, 0, thumb.cols, thumb.rows);
+				cv::Mat tri = test(r);
+				thumb.copyTo(tri);
+				cv::rectangle(test, r, cv::Scalar(255,255,255));
+			}
+		}
+		// mask as pic-in-pic
+		if (showMask) {
+			if (!mask.empty()) {
+				cv::Mat smask, cmask;
+				int mheight = mask.rows*160/mask.cols;
+				cv::resize(mask, smask, cv::Size(160, mheight));
+				cv::cvtColor(smask, cmask, cv::COLOR_GRAY2BGR);
+				cv::Rect r = cv::Rect(width-160, 0, 160, mheight);
+				cv::Mat mri = test(r);
+				cmask.copyTo(mri);
+				cv::rectangle(test, r, cv::Scalar(255,255,255));
+				cv::putText(test, "Mask", cv::Point(width-155,115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+			}
+		}
+		cv::imshow(DEBUG_WIN_NAME, test);
 
 		auto keyPress = cv::waitKey(1);
 		switch(keyPress) {
@@ -536,6 +698,18 @@ int main(int argc, char* argv[]) try {
 				break;
 			case 'v':
 				flipVertical = !flipVertical;
+				break;
+			case 'f':
+				showFPS = !showFPS;
+				break;
+			case 'b':
+				showBackground = !showBackground;
+				break;
+			case 'm':
+				showMask = !showMask;
+				break;
+			case '?':
+				showHelp = !showHelp;
 				break;
 		}
 	}

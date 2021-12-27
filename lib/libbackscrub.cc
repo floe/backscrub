@@ -112,17 +112,17 @@ static cv::Mat getTensorMat(backscrub_ctx_t &ctx, int tnum) {
 
 // Determine type of model from the name
 // TODO:XXX: use metadata when available
-static modeltype_t get_modeltype(const char* modelname) {
-	if (strstr(modelname, "body-pix")) {
+static modeltype_t get_modeltype(const std::string& modelname) {
+	if (modelname.find("body-pix")!=modelname.npos) {
 		return modeltype_t::BodyPix;
 	}
-	else if (strstr(modelname, "deeplab")) {
+	else if (modelname.find("deeplab")!=modelname.npos) {
 		return modeltype_t::DeepLab;
 	}
-	else if (strstr(modelname, "segm_")) {
+	else if (modelname.find("segm_")!=modelname.npos) {
 		return modeltype_t::GoogleMeetSegmentation;
 	}
-	else if (strstr(modelname, "selfie")) {
+	else if (modelname.find("selfie")!=modelname.npos) {
 		return modeltype_t::MLKitSelfie;
 	}
 	return modeltype_t::Unknown;
@@ -155,7 +155,7 @@ static const size_t pers = std::distance(labels.begin(), std::find(labels.begin(
 
 void *bs_maskgen_new(
 	// Required parameters
-	const char *modelname,
+	const std::string& modelname,
 	size_t threads,
 	size_t width,
 	size_t height,
@@ -182,9 +182,9 @@ void *bs_maskgen_new(
 	ctx.onmask = onmask;
 	ctx.caller_ctx = caller_ctx;
 	// Load model
-	ctx.model = tflite::FlatBufferModel::BuildFromFile(modelname);
+	ctx.model = tflite::FlatBufferModel::BuildFromFile(modelname.c_str());
 	if (!ctx.model) {
-		_dbg(ctx, "error: unable to load model from file: '%s'.\n", modelname);
+		_dbg(ctx, "error: unable to load model from file: '%s'.\n", modelname.c_str());
 		bs_maskgen_delete(pctx);
 		return nullptr;
 	}
@@ -192,7 +192,7 @@ void *bs_maskgen_new(
 	ctx.modeltype = get_modeltype(modelname);
 	ctx.norm = get_normalization(ctx.modeltype);
 	if (modeltype_t::Unknown == ctx.modeltype) {
-		_dbg(ctx, "error: unknown model type '%s'.\n", modelname);
+		_dbg(ctx, "error: unknown model type '%s'.\n", modelname.c_str());
 		bs_maskgen_delete(pctx);
 		return nullptr;
 	}
