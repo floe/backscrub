@@ -1,8 +1,10 @@
 /* This is licensed software, @see LICENSE file.
  * Authors - @see AUTHORS file. */
 
-#ifndef _BACKGROUND_H_
-#define _BACKGROUND_H_
+#pragma once
+
+#include <memory>
+#include <string>
 
 #include <opencv2/core/mat.hpp>
 
@@ -21,5 +23,3 @@ int grab_background(std::shared_ptr<background_t> handle, int width, int height,
 // Grab current thumbnail image (if any) from background
 // Returns <0 on error, 0 on success and copies thumbnail to out
 int grab_thumbnail(std::shared_ptr<background_t> handle, cv::Mat &out);
-
-#endif

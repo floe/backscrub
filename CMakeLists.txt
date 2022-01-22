@@ -53,7 +53,8 @@ set(CONFU_DEPENDENCIES_BINARY_DIR ${CMAKE_BINARY_DIR}/_deps)
 
 # pull in Tensorflow Lite source build
 add_subdirectory(${TENSORFLOW}/tensorflow/lite
-  "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
+  "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL
+)
 
 # build backscrub code
 add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION} INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
@@ -62,7 +63,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_library(backscrub
   lib/libbackscrub.cc
-  lib/transpose_conv_bias.cc)
+  lib/transpose_conv_bias.cc
+)
 
 target_link_libraries(backscrub
   tensorflow-lite ${CMAKE_DL_LIBS}
@@ -73,13 +75,16 @@ target_link_libraries(backscrub
 # We don't build the Linux-specific wrapper application on Windows
 if(NOT WIN32)
 add_library(videoio
-  videoio/loopback.cc)
+  videoio/loopback.cc
+)
 
 target_link_libraries(videoio)
 
 add_executable(deepseg
   app/deepseg.cc
   app/background.cc
+  app/calcmask.cc
+  app/utils.cc
 )
 
 set_target_properties(deepseg PROPERTIES OUTPUT_NAME backscrub)
@@ -135,7 +140,8 @@ get_link_libraries(backscrub BACKSCRUB_DEPS)
 export(TARGETS
   backscrub
   ${BACKSCRUB_DEPS}
-  FILE BackscrubTargets.cmake)
+  FILE BackscrubTargets.cmake
+)
 
 # installation names for library, header, backgrounds and models
 if(NOT WIN32)
