@@ -68,6 +68,7 @@ int main(int argc, char* argv[]) try {
 
 	bool flipHorizontal = false;
 	bool flipVertical = false;
+	bool multipass = false;
 
 	std::string vcam = "/dev/video1";
 	std::string ccam = "/dev/video0";
@@ -89,6 +90,8 @@ int main(int argc, char* argv[]) try {
 			flipHorizontal = !flipHorizontal;
 		} else if (args[arg] == "-V") {
 			flipVertical = !flipVertical;
+		} else if (args[arg] == "-M") {
+			multipass = !multipass;
 		} else if (args[arg] == "-v") {
 			if (hasArgument) {
 				vcam = args[++arg];
@@ -181,7 +184,7 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "usage:\n");
 		fprintf(stderr, "  backscrub [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
-		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>] [-p <option:value>] [-H] [-V]\n");
+		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>] [-p <option:value>] [-H] [-V] [-M]\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "-?            Display this usage information\n");
 		fprintf(stderr, "-d            Increase debug level\n");
@@ -200,6 +203,7 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "-p bgblur:<strength>   Blur the video background\n");
 		fprintf(stderr, "-H            Mirror the output horizontally\n");
 		fprintf(stderr, "-V            Mirror the output vertically\n");
+		fprintf(stderr, "-M            Activate multi-pass filtering (for aspect ratio mismatch)\n");
 		exit(1);
 	}
 
@@ -221,6 +225,7 @@ int main(int argc, char* argv[]) try {
 	printf("height: %zu\n", height);
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
+	printf("multi:  %s\n", multipass ? "yes" : "no");
 	printf("threads:%zu\n", threads);
 	printf("back:   %s\n", s_backg ? s_backg.value().c_str() : "(none)");
 	printf("model:  %s\n\n", s_model ? s_model.value().c_str() : "(none)");
@@ -290,7 +295,7 @@ int main(int argc, char* argv[]) try {
 		// copy new frame to buffer
 		cap.retrieve(raw);
 		ti.retrns = timestamp();
-		ai.set_input_frame(raw);
+		ai.set_input_frame(raw, multipass);
 		ti.copyns = timestamp();
 
 		if (raw.rows == 0 || raw.cols == 0)
@@ -410,6 +415,7 @@ int main(int argc, char* argv[]) try {
 				" f: toggle FPS display on/off",
 				" b: toggle background display on/off",
 				" m: toggle mask display on/off",
+				" M: toggle multi-pass processing on/off",
 				" ?: toggle this help text on/off"
 			};
 
@@ -477,6 +483,10 @@ int main(int argc, char* argv[]) try {
 
 			case 'm':
 				showMask = !showMask;
+				break;
+
+			case 'M':
+				multipass = !multipass;
 				break;
 
 			case '?':

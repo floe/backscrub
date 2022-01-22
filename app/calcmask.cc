@@ -51,10 +51,12 @@ CalcMask::~CalcMask() {
 	bs_maskgen_delete(maskctx);
 }
 
-void CalcMask::set_input_frame(cv::Mat &frame) {
+void CalcMask::set_input_frame(const cv::Mat &frame, bool multipass) {
 	std::lock_guard<std::mutex> hold(lock_frame);
 
 	*frame_next = frame.clone();
+	this->multipass = multipass;
+
 	new_frame = true;
 	condition_new_frame.notify_all();
 }

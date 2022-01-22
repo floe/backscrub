@@ -16,6 +16,7 @@ enum class thread_state_t { RUNNING, DONE };
 class CalcMask final {
 protected:
 	volatile thread_state_t state;
+	volatile bool multipass;
 
 	void *maskctx;
 	timestamp_t t0;
@@ -58,6 +59,6 @@ public:
 	CalcMask(const std::string& modelname, size_t threads, size_t width, size_t height);
 	~CalcMask();
 
-	void set_input_frame(cv::Mat &frame);
+	void set_input_frame(const cv::Mat &frame, bool multipass);
 	void get_output_mask(cv::Mat &out);
 };
