@@ -340,7 +340,7 @@ std::optional<std::string> resolve_path(const std::string& provided, const std::
 int main(int argc, char* argv[]) try {
 
 	printf("%s version %s\n", argv[0], _STR(DEEPSEG_VERSION));
-	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
+	printf("(c) 2021-2022 by floe@butterbrot.org & contributors\n");
 	printf("https://github.com/floe/backscrub\n");
 	timinginfo_t ti;
 	ti.bootns = timestamp();
