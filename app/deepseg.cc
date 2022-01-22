@@ -8,6 +8,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <functional>
 #include <fstream>
 #include <istream>
 #include <regex>
@@ -34,6 +35,20 @@
 #endif
 
 #define DEBUG_WIN_NAME "Backscrub " _STR(DEEPSEG_VERSION) " ('?' for help)"
+
+class on_scope_exit {
+private:
+	const std::function<void()> dtor;
+public:
+	explicit on_scope_exit(const std::function<void()>& f) : dtor(f) {}
+	on_scope_exit() = delete;
+	on_scope_exit(const on_scope_exit&) = delete;
+	~on_scope_exit() {
+		if(dtor) {
+			dtor();
+		}
+	}
+};
 
 int fourCcFromString(const std::string& in)
 {
@@ -518,6 +533,9 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "Failed to initialize vcam device.\n");
 		exit(1);
 	}
+	on_scope_exit lbfd_closer([lbfd]() {
+		close(lbfd);
+	});
 
 	cv::VideoCapture cap(s_ccam.c_str(), cv::CAP_V4L2);
 	if(!cap.isOpened()) {
