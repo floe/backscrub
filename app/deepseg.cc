@@ -353,58 +353,61 @@ int main(int argc, char* argv[]) try {
 	size_t threads = 2;
 	size_t width = 640;
 	size_t height = 480;
-	const char *back = nullptr;
-	const char *vcam = "/dev/video1";
-	const char *ccam = "/dev/video0";
 	bool flipHorizontal = false;
 	bool flipVertical = false;
 	int fourcc = 0;
 	size_t blur_strength = 0;
 
-	const char* modelname = "selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
+	std::string vcam = "/dev/video1";
+	std::string ccam = "/dev/video0";
+	std::optional<std::string> back;
+	std::optional<std::string> modelname = "selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
+
+	const std::vector<std::string> args(argv, argv + argc);
 
 	bool showUsage = false;
 	for (int arg = 1; arg < argc; arg++) {
-		bool hasArgument = arg+1 < argc;
-		if (strncmp(argv[arg], "-?", 2) == 0) {
+		bool hasArgument = arg + 1 < argc;
+
+		if (args[arg] == "-?") {
 			showUsage = true;
-		} else if (strncmp(argv[arg], "-d", 2) == 0) {
+		} else if (args[arg] == "-d") {
 			++debug;
-		} else if (strncmp(argv[arg], "-s", 2) == 0) {
+		} else if (args[arg] == "-s") {
 			showProgress = true;
-		} else if (strncmp(argv[arg], "-H", 2) == 0) {
+		} else if (args[arg] == "-H") {
 			flipHorizontal = !flipHorizontal;
-		} else if (strncmp(argv[arg], "-V", 2) == 0) {
+		} else if (args[arg] == "-V") {
 			flipVertical = !flipVertical;
-		} else if (strncmp(argv[arg], "-v", 2) == 0) {
+		} else if (args[arg] == "-v") {
 			if (hasArgument) {
-				vcam = argv[++arg];
+				vcam = args[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-c", 2) == 0) {
+		} else if (args[arg] == "-c") {
 			if (hasArgument) {
-				ccam = argv[++arg];
+				ccam = args[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-b", 2) == 0) {
+		} else if (args[arg] == "-b") {
 			if (hasArgument) {
-				back = argv[++arg];
+				back = args[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-m", 2) == 0) {
+		} else if (args[arg] == "-m") {
 			if (hasArgument) {
-				modelname = argv[++arg];
+				modelname = args[++arg];
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-p", 2) == 0) {
+		} else if (args[arg] == "-p") {
 			if (hasArgument) {
-				std::string option = argv[++arg];
+				std::string option = args[++arg];
 				std::string key = option.substr(0, option.find(":"));
-				std::string value = option.substr(option.find(":")+1);
+				std::string value = option.substr(option.find(":") + 1);
 				if (key == "bgblur") {
 					if (is_number(value)) {
 					blur_strength = std::stoi(value);
@@ -423,33 +426,33 @@ int main(int argc, char* argv[]) try {
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-w", 2) == 0) {
-			if (hasArgument && sscanf(argv[++arg], "%zu", &width)) {
+		} else if (args[arg] == "-w") {
+			if (hasArgument && sscanf(args[++arg].c_str(), "%zu", &width)) {
 				if (!width) {
 					showUsage = true;
 				}
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-h", 2) == 0) {
-			if (hasArgument && sscanf(argv[++arg], "%zu", &height)) {
+		} else if (args[arg] == "-h") {
+			if (hasArgument && sscanf(args[++arg].c_str(), "%zu", &height)) {
 				if (!height) {
 					showUsage = true;
 				}
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-f", 2) == 0) {
+		} else if (args[arg] == "-f") {
 			if (hasArgument) {
-				fourcc = fourCcFromString(argv[++arg]);
+				fourcc = fourCcFromString(args[++arg]);
 				if (!fourcc) {
 					showUsage = true;
 				}
 			} else {
 				showUsage = true;
 			}
-		} else if (strncmp(argv[arg], "-t", 2) == 0) {
-			if (hasArgument && sscanf(argv[++arg], "%zu", &threads)) {
+		} else if (args[arg] == "-t") {
+			if (hasArgument && sscanf(args[++arg].c_str(), "%zu", &threads)) {
 				if (!threads) {
 					showUsage = true;
 				}
@@ -457,7 +460,7 @@ int main(int argc, char* argv[]) try {
 				showUsage = true;
 			}
 		} else {
-			fprintf(stderr, "Unknown option: %s\n", argv[arg]);
+			fprintf(stderr, "Unknown option: %s\n", args[arg].c_str());
 		}
 	}
 
@@ -487,30 +490,29 @@ int main(int argc, char* argv[]) try {
 		exit(1);
 	}
 
-	std::string s_ccam(ccam);
-	std::string s_vcam(vcam);
 	// permit unprefixed device names
-	if (s_ccam.rfind("/dev/", 0) != 0)
-		s_ccam = "/dev/" + s_ccam;
-	if (s_vcam.rfind("/dev/", 0) != 0)
-		s_vcam = "/dev/" + s_vcam;
-	std::optional<std::string> s_model = resolve_path(modelname, "models");
-	std::optional<std::string> s_backg = back ? resolve_path(back, "backgrounds") : std::nullopt;
+	if (ccam.rfind("/dev/", 0) != 0)
+		ccam = "/dev/" + ccam;
+	if (vcam.rfind("/dev/", 0) != 0)
+		vcam = "/dev/" + vcam;
+	std::optional<std::string> s_model = resolve_path(modelname.value(), "models");
+	std::optional<std::string> s_backg = back ? resolve_path(back.value(), "backgrounds") : std::nullopt;
+
 	printf("debug:  %d\n", debug);
-	printf("ccam:   %s\n", s_ccam.c_str());
-	printf("vcam:   %s\n", s_vcam.c_str());
+	printf("ccam:   %s\n", ccam.c_str());
+	printf("vcam:   %s\n", vcam.c_str());
 	printf("width:  %zu\n", width);
 	printf("height: %zu\n", height);
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
 	printf("threads:%zu\n", threads);
-	printf("back:   %s => %s\n", back ? back : "(none)", s_backg ? s_backg.value().c_str() : "(none)");
-	printf("model:  %s => %s\n\n", modelname ? modelname : "(none)", s_model ? s_model.value().c_str() : "(none)");
+	printf("back:   %s\n", s_backg ? s_backg.value().c_str() : "(none)");
+	printf("model:  %s\n\n", s_model ? s_model.value().c_str() : "(none)");
 
 	// No model - stop here
 	if (!s_model) {
-		printf("Error: unable to load specified model: %s\n", modelname);
-		exit(1);
+		printf("Error: unable to load specified model: %s\n", modelname.value().c_str());
+		return 1;
 	}
 
 	// Create debug window early (ensures highgui is correctly initialised on this thread)
@@ -521,26 +523,27 @@ int main(int argc, char* argv[]) try {
 	// Load background if specified
 	auto pbk(s_backg ? load_background(s_backg.value(), debug) : nullptr);
 	if (!pbk) {
-		if (s_backg) {
+		if (back) {
 			printf("Warning: could not load background image, defaulting to green\n");
 		}
 	}
+
 	// default green screen background
 	cv::Mat bg = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 255, 0));
 
-	int lbfd = loopback_init(s_vcam, width, height, debug);
+	int lbfd = loopback_init(vcam, width, height, debug);
 	if(lbfd < 0) {
 		fprintf(stderr, "Failed to initialize vcam device.\n");
-		exit(1);
+		return 1;
 	}
 	on_scope_exit lbfd_closer([lbfd]() {
 		close(lbfd);
 	});
 
-	cv::VideoCapture cap(s_ccam.c_str(), cv::CAP_V4L2);
+	cv::VideoCapture cap(ccam.c_str(), cv::CAP_V4L2);
 	if(!cap.isOpened()) {
 		perror("failed to open video device");
-		exit(1);
+		return 1;
 	}
 
 	cap.set(cv::CAP_PROP_FRAME_WIDTH,  width);
