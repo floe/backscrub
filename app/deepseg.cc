@@ -124,9 +124,11 @@ int main(int argc, char* argv[]) try {
 				std::string option = args[++arg];
 				std::string key = option.substr(0, option.find(":"));
 				std::string value = option.substr(option.find(":") + 1);
+
 				if (key == "bgblur") {
 					if (is_number(value)) {
 						blur_strength = std::stoi(value);
+
 						if (blur_strength % 2 == 0) {
 							fprintf(stderr, "strength value must be odd\n");
 							showUsage = true;
@@ -161,6 +163,7 @@ int main(int argc, char* argv[]) try {
 		} else if (args[arg] == "-f") {
 			if (hasArgument) {
 				fourcc = fourCcFromString(args[++arg]);
+
 				if (!fourcc) {
 					showUsage = true;
 				}
@@ -210,8 +213,10 @@ int main(int argc, char* argv[]) try {
 	// permit unprefixed device names
 	if (ccam.rfind("/dev/", 0) != 0)
 		ccam = "/dev/" + ccam;
+
 	if (vcam.rfind("/dev/", 0) != 0)
 		vcam = "/dev/" + vcam;
+
 	std::optional<std::string> s_model = resolve_path(modelname.value(), "models");
 	std::optional<std::string> s_backg = back ? resolve_path(back.value(), "backgrounds") : std::nullopt;
 
@@ -239,6 +244,7 @@ int main(int argc, char* argv[]) try {
 
 	// Load background if specified
 	auto pbk(s_backg ? load_background(s_backg.value(), debug) : nullptr);
+
 	if (!pbk) {
 		if (back) {
 			printf("Warning: could not load background image, defaulting to green\n");
@@ -249,15 +255,18 @@ int main(int argc, char* argv[]) try {
 	cv::Mat bg = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 255, 0));
 
 	int lbfd = loopback_init(vcam, width, height, debug);
+
 	if(lbfd < 0) {
 		fprintf(stderr, "Failed to initialize vcam device.\n");
 		return 1;
 	}
+
 	on_scope_exit lbfd_closer([lbfd]() {
 		close(lbfd);
 	});
 
 	cv::VideoCapture cap(ccam.c_str(), cv::CAP_V4L2);
+
 	if(!cap.isOpened()) {
 		perror("failed to open video device");
 		return 1;
@@ -265,15 +274,17 @@ int main(int argc, char* argv[]) try {
 
 	cap.set(cv::CAP_PROP_FRAME_WIDTH,  width);
 	cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+
 	if (fourcc)
 		cap.set(cv::CAP_PROP_FOURCC, fourcc);
+
 	cap.set(cv::CAP_PROP_CONVERT_RGB, true);
 
 	cv::Mat mask(height, width, CV_8U);
 	cv::Mat raw;
 	CalcMask ai(s_model.value(), threads, width, height);
 	ti.lastns = timestamp();
-	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
+	printf("Startup: %ldns\n", diffnanosecs(ti.lastns, ti.bootns));
 
 	bool filterActive = true;
 
@@ -288,7 +299,8 @@ int main(int argc, char* argv[]) try {
 		ai.set_input_frame(raw);
 		ti.copyns = timestamp();
 
-		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
+		if (raw.rows == 0 || raw.cols == 0)
+			continue; // sanity check
 
 		if (filterActive) {
 			// do background detection magic
@@ -299,23 +311,28 @@ int main(int argc, char* argv[]) try {
 			// - copy of input video if blur_strength != 0
 			// - default green (initial value)
 			bool canBlur = false;
+
 			if (pbk) {
-				if (grab_background(pbk, width, height, bg)<0)
+				if (grab_background(pbk, width, height, bg) < 0)
 					throw "Failed to read background frame";
+
 				canBlur = true;
 			} else if (blur_strength) {
 				raw.copyTo(bg);
 				canBlur = true;
 			}
+
 			// blur frame if requested (unless it's just green)
 			if (canBlur && blur_strength)
-				cv::GaussianBlur(bg,bg,cv::Size(blur_strength,blur_strength), 0);
+				cv::GaussianBlur(bg, bg, cv::Size(blur_strength, blur_strength), 0);
+
 			ti.prepns = timestamp();
 			// alpha blend background over foreground using mask
 			raw = alpha_blend(bg, raw, mask);
 		} else {
 			ti.prepns = timestamp();
 		}
+
 		ti.maskns = timestamp();
 
 		if (flipHorizontal && flipVertical) {
@@ -325,40 +342,46 @@ int main(int argc, char* argv[]) try {
 		} else if (flipVertical) {
 			cv::flip(raw, raw, 0);
 		}
+
 		ti.postns = timestamp();
 
 		// write frame to v4l2loopback as YUYV
 		raw = convert_rgb_to_yuyv(raw);
-		int framesize = raw.step[0]*raw.rows;
+		int framesize = raw.step[0] * raw.rows;
+
 		while (framesize > 0) {
-			int ret = write(lbfd,raw.data,framesize);
+			int ret = write(lbfd, raw.data, framesize);
+
 			if(ret <= 0) {
 				perror("writing to loopback device");
 				exit(1);
 			}
+
 			framesize -= ret;
 		}
-		ti.v4l2ns=timestamp();
+
+		ti.v4l2ns = timestamp();
 
 		if (!debug) {
 			if (showProgress) {
 				printf(".");
 				fflush(stdout);
 			}
+
 			continue;
 		}
 
 		// timing details..
-		double mfps = 1e9/diffnanosecs(ti.v4l2ns,ti.lastns);
-		double afps = 1e9/ai.loopns;
+		double mfps = 1e9 / diffnanosecs(ti.v4l2ns, ti.lastns);
+		double afps = 1e9 / ai.loopns;
 		printf("main [grab:%9ld retr:%9ld copy:%9ld prep:%9ld mask:%9ld post:%9ld v4l2:%9ld FPS: %5.2f] ai: [wait:%9ld prep:%9ld tflt:%9ld mask:%9ld FPS: %5.2f] \e[K\r",
-			diffnanosecs(ti.grabns,ti.lastns),
-			diffnanosecs(ti.retrns,ti.grabns),
-			diffnanosecs(ti.copyns,ti.retrns),
-			diffnanosecs(ti.prepns,ti.copyns),
-			diffnanosecs(ti.maskns,ti.prepns),
-			diffnanosecs(ti.postns,ti.maskns),
-			diffnanosecs(ti.v4l2ns,ti.postns),
+			diffnanosecs(ti.grabns, ti.lastns),
+			diffnanosecs(ti.retrns, ti.grabns),
+			diffnanosecs(ti.copyns, ti.retrns),
+			diffnanosecs(ti.prepns, ti.copyns),
+			diffnanosecs(ti.maskns, ti.prepns),
+			diffnanosecs(ti.postns, ti.maskns),
+			diffnanosecs(ti.v4l2ns, ti.postns),
 			mfps,
 			ai.waitns,
 			ai.prepns,
@@ -368,17 +391,20 @@ int main(int argc, char* argv[]) try {
 		);
 		fflush(stdout);
 		ti.lastns = timestamp();
+
 		if (debug < 2)
 			continue;
 
 		cv::Mat test;
-		cv::cvtColor(raw,test,cv::COLOR_YUV2BGR_YUYV);
+		cv::cvtColor(raw, test, cv::COLOR_YUV2BGR_YUYV);
+
 		// frame rates at the bottom
 		if (showFPS) {
 			char status[80];
 			snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
-			cv::putText(test, status, cv::Point(5, test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
+			cv::putText(test, status, cv::Point(5, test.rows - 5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
 		}
+
 		// keyboard help
 		if (showHelp) {
 			static const std::string help[] = {
@@ -392,60 +418,73 @@ int main(int argc, char* argv[]) try {
 				" m: toggle mask display on/off",
 				" ?: toggle this help text on/off"
 			};
-			for (int i=0; i<sizeof(help)/sizeof(std::string); i++) {
-				cv::putText(test, help[i], cv::Point(10,test.rows/2+i*15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+
+			for (int i = 0; i < sizeof(help) / sizeof(std::string); i++) {
+				cv::putText(test, help[i], cv::Point(10, test.rows / 2 + i * 15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
 			}
 		}
+
 		// background as pic-in-pic
 		if (showBackground && pbk) {
 			cv::Mat thumb;
 			grab_thumbnail(pbk, thumb);
+
 			if (!thumb.empty()) {
 				cv::Rect r = cv::Rect(0, 0, thumb.cols, thumb.rows);
 				cv::Mat tri = test(r);
 				thumb.copyTo(tri);
-				cv::rectangle(test, r, cv::Scalar(255,255,255));
+				cv::rectangle(test, r, cv::Scalar(255, 255, 255));
 			}
 		}
+
 		// mask as pic-in-pic
 		if (showMask) {
 			if (!mask.empty()) {
 				cv::Mat smask, cmask;
-				int mheight = mask.rows*160/mask.cols;
+				int mheight = mask.rows * 160 / mask.cols;
 				cv::resize(mask, smask, cv::Size(160, mheight));
 				cv::cvtColor(smask, cmask, cv::COLOR_GRAY2BGR);
-				cv::Rect r = cv::Rect(width-160, 0, 160, mheight);
+				cv::Rect r = cv::Rect(width - 160, 0, 160, mheight);
 				cv::Mat mri = test(r);
 				cmask.copyTo(mri);
-				cv::rectangle(test, r, cv::Scalar(255,255,255));
-				cv::putText(test, "Mask", cv::Point(width-155,115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+				cv::rectangle(test, r, cv::Scalar(255, 255, 255));
+				cv::putText(test, "Mask", cv::Point(width - 155, 115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
 			}
 		}
+
 		cv::imshow(DEBUG_WIN_NAME, test);
 
 		auto keyPress = cv::waitKey(1);
+
 		switch(keyPress) {
 			case 'q':
 				running = false;
 				break;
+
 			case 's':
 				filterActive = !filterActive;
 				break;
+
 			case 'h':
 				flipHorizontal = !flipHorizontal;
 				break;
+
 			case 'v':
 				flipVertical = !flipVertical;
 				break;
+
 			case 'f':
 				showFPS = !showFPS;
 				break;
+
 			case 'b':
 				showBackground = !showBackground;
 				break;
+
 			case 'm':
 				showMask = !showMask;
 				break;
+
 			case '?':
 				showHelp = !showHelp;
 				break;

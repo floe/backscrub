@@ -28,6 +28,8 @@ Use `cmake` to build the project: create a subfolder (e.g. `build`), change to t
 
 **Deprecated**: Another option to build everything is to run `make` in the root directory of the repository. While this will download and build all dependencies, it comes with a few drawbacks like missing support for XNNPACK. Also this might break with newer versions of Tensorflow Lite as upstream support for this option has been removed. Use at you own risk.
 
+When working on the code be sure to keep the code style aligned with the existing code base. A good starting point for this is using `astyle` with a command like this: `astyle -K -xU -p -xg -f -xb -t4 -r 'app/*.cc' 'app/*.h' 'lib/*.cc' 'lib/*.h' 'videoio/*.cc' 'videoio/*.h'`.
+
 ## Usage
 
 First, load the v4l2loopback module (extra settings needed to make Chrome work):
@@ -68,15 +70,15 @@ Tested with the following dependencies:
     - OpenCV 3.2.0 (stock package)
     - V4L2-Loopback 0.10.0 (stock package)
     - Tensorflow Lite 2.1.0 (from [repo](https://github.com/tensorflow/tensorflow/tree/v2.1.0/tensorflow/lite))
-  
+
 Tested with the following software:
 
-  - Firefox 
+  - Firefox
     - 90.0.2 (works)
     - 84.0   (works)
     - 76.0.1 (works)
     - 74.0.1 (works)
-  - Skype 
+  - Skype
     - 8.67.0.96 (works)
     - 8.60.0.76 (works)
     - 8.58.0.93 (works)
@@ -150,7 +152,7 @@ The dataflow through the whole program is roughly as follows:
     - extract portrait ROI in center
       - downscale ROI to 144 x 256 (*)
       - convert to RGB float32 (*)
-      - run Google Meet segmentation model 
+      - run Google Meet segmentation model
       - convert result to binary mask using softmax
       - denoise mask using erode/dilate
     - upscale mask to raw image size
@@ -166,7 +168,7 @@ As usual: pull requests welcome.
 See [Issues](https://github.com/floe/backscrub/issues) and [Pull Requests](https://github.com/floe/backscrub/pulls) for currently discussed/in-progress extensions, and also check out the `experimental` branch.
 
 ## Fixed
-  
+
   - The project name isn't catchy enough. Help me find a nice [backronym](https://en.wikipedia.org/wiki/Backronym).
   - Resolution is currently hardcoded to 640x480 (lowest common denominator).
   - Only works with Linux, because that's what I use.

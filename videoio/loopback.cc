@@ -34,16 +34,17 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 	size_t linewidth = w * 2;
 	size_t framesize = h * linewidth;
 
-	int fdwr = 0;
-	int ret_code = 0;
+	int ret_code;
 
-	fdwr = open(device.c_str(), O_RDWR);
+	int fdwr = open(device.c_str(), O_RDWR);
+
 	if(fdwr < 0) {
 		fprintf(stderr, "%s:%d(%s): Failed to open video device: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
 		return -1;
 	}
 
 	ret_code = ioctl(fdwr, VIDIOC_QUERYCAP, &vid_caps);
+
 	if(ret_code < 0) {
 		fprintf(stderr, "%s:%d(%s): Failed to query device capabilities: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
 		close(fdwr);
@@ -54,6 +55,7 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 	vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 
 	ret_code = ioctl(fdwr, VIDIOC_G_FMT, &vid_format);
+
 	if(ret_code < 0) {
 		fprintf(stderr, "%s:%d(%s): Failed to get device video format: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
 		close(fdwr);
@@ -70,13 +72,15 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 	vid_format.fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
 
 	ret_code = ioctl(fdwr, VIDIOC_S_FMT, &vid_format);
+
 	if(ret_code < 0) {
 		fprintf(stderr, "%s:%d(%s): Failed to set device video format: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
 		close(fdwr);
 		return -1;
 	}
 
-	if (debug) print_format(&vid_format);
+	if (debug)
+		print_format(&vid_format);
 
 	return fdwr;
 }
@@ -93,12 +97,13 @@ int main(int argc, char* argv[]) {
 	size_t linewidth = FRAME_WIDTH  * 2;
 	size_t framesize = FRAME_HEIGHT * linewidth;
 
-	if(argc>1) {
-		video_device=argv[1];
+	if(argc > 1) {
+		video_device = argv[1];
 		printf("using output device: %s\n", video_device.c_str());
 	}
 
-	int fdwr = loopback_init(video_device,FRAME_WIDTH,FRAME_HEIGHT);
+	int fdwr = loopback_init(video_device, FRAME_WIDTH, FRAME_HEIGHT);
+
 	if(fdwr < 0) {
 		fprintf(stderr, "Failed to initialize output device %s\n", video_device.c_str());
 		exit(1);
