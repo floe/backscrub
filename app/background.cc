@@ -70,7 +70,7 @@ static void read_thread(std::weak_ptr<background_t> weak) {
                 cv::resize(grab, thumb, cv::Size(160, theight));
                 snprintf(msg, sizeof(msg), "FPS:%0.1f", fps);
                 cv::putText(thumb, msg, cv::Point(5, 15), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
-                snprintf(msg, sizeof(msg), "FRM:%05d", fps, pbkd->frame);
+                snprintf(msg, sizeof(msg), "FRM:%05d", pbkd->frame);
                 cv::putText(thumb, msg, cv::Point(5, 30), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
                 cv::putText(thumb, "Background", cv::Point(5, pbkd->thumb.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
                 {
