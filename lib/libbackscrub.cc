@@ -296,12 +296,6 @@ void bs_maskgen_delete(void *context) {
 
 	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)context);
 
-	// clear all mask data
-	ctx.ofinal.deallocate();
-	ctx.mask.deallocate();
-	ctx.input.deallocate();
-	ctx.output.deallocate();
-
 	// drop interpreter (if present)
 	if (ctx.interpreter != nullptr)
 		ctx.interpreter.reset();
