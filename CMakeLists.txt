@@ -83,9 +83,12 @@ target_link_libraries(videoio)
 add_executable(deepseg
   app/deepseg.cc
   app/background.cc
+  app/blend.cc
   app/calcmask.cc
   app/utils.cc
 )
+# special compile options for blend.cc to use SIMD optimiser
+set_source_files_properties(app/blend.cc PROPERTIES COMPILE_OPTIONS "-march=native;-O9")
 
 set_target_properties(deepseg PROPERTIES OUTPUT_NAME backscrub)
 
