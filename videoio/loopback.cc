@@ -55,6 +55,11 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 	vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 
 	ret_code = ioctl(fdwr, VIDIOC_G_FMT, &vid_format);
+	if(ret_code < 0) {
+		fprintf(stderr, "%s:%d(%s): Failed to get device video format: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
+		close(fdwr);
+		return -1;
+	}
 
 	if(ret_code < 0) {
 		fprintf(stderr, "%s:%d(%s): Failed to get device video format: %s\n", __FILE__, __LINE__, __func__, strerror(errno));

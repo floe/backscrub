@@ -88,6 +88,7 @@ Tested with the following software:
   - Microsoft Teams
     - 1.3.00.30857 (works)
     - 1.3.00.5153 (works)
+    - 1.4.00.26453 (works)
   - Chrome
     - 87.0.4280.88 (works)
     - 81.0.4044.138 (works)
