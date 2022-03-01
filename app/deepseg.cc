@@ -327,6 +327,7 @@ int main(int argc, char* argv[]) try {
 	printf("%s version %s\n", argv[0], _STR(DEEPSEG_VERSION));
 	printf("(c) 2021 by floe@butterbrot.org & contributors\n");
 	printf("https://github.com/floe/backscrub\n");
+	printf("(running with Tensorflow Lite version: %s)\n", bs_tensorflow_version());
 	timinginfo_t ti;
 	ti.bootns = timestamp();
 	int debug = 0;

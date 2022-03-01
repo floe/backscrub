@@ -9,6 +9,9 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+// Get Tensorflow version string
+extern const char *bs_tensorflow_version(void);
+
 // Return a new (opaque) mask generation context
 extern void *bs_maskgen_new(
 	// Required parameters
