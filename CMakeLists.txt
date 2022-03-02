@@ -68,7 +68,7 @@ add_subdirectory(${TENSORFLOW}/tensorflow/lite
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
 
 # build backscrub code
-add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION} INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
+add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION} TF_VERSION=${TF_VERSION} INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
 include_directories(BEFORE .)
 set(CMAKE_CXX_STANDARD 17)
 
