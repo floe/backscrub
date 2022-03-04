@@ -12,7 +12,7 @@ if(NOT DEFINED TENSORFLOW)
   set(TF_CHECKOUT true)
 endif()
 
-# find Git and use it to get backscrub version
+# find Git and use it to get backscrub & Tensorflow versions
 find_package(Git)
 if(GIT_FOUND)
   execute_process(
@@ -22,7 +22,7 @@ if(GIT_FOUND)
 else()
   set(DEEPSEG_VERSION v0.2.0-no-git)
 endif()
-message("Version: ${DEEPSEG_VERSION}")
+message("Backscrub version: ${DEEPSEG_VERSION}")
 
 # always build PIC everywhere
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
@@ -42,6 +42,18 @@ else()
   message(STATUS "Using specified Tensorflow: ${TENSORFLOW}")
 endif(TF_CHECKOUT)
 
+if(GIT_FOUND)
+  get_filename_component(TF_ABS ${TENSORFLOW} ABSOLUTE)
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} describe --all --long --always --dirty
+    WORKING_DIRECTORY ${TF_ABS}
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    OUTPUT_VARIABLE TF_VERSION)
+else()
+  set(TF_VERSION unknown-no-git)
+endif()
+message(STATUS "Tensorflow version: ${TF_VERSION}")
+
 # force compilation of XNNPACK delegate (without this the too clever-by-half use
 # of weak/strong symbol linking fails in a static library)
 add_compile_definitions(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
@@ -56,7 +68,7 @@ add_subdirectory(${TENSORFLOW}/tensorflow/lite
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
 
 # build backscrub code
-add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION} INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
+add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION} TF_VERSION=${TF_VERSION} INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
 include_directories(BEFORE .)
 set(CMAKE_CXX_STANDARD 17)
 

@@ -2,6 +2,7 @@
  * Authors - @see AUTHORS file.
 ==============================================================================*/
 
+#include "tensorflow/lite/version.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -144,6 +145,10 @@ static normalization_t get_normalization(modeltype_t type) {
 			break;
 	}
 	return rv;
+}
+
+const char *bs_tensorflow_version(void) {
+	return TFLITE_VERSION_STRING;
 }
 
 // deeplabv3 classes
