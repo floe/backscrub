@@ -38,32 +38,6 @@ int fourCcFromString(const std::string& in) {
 	return 0;
 }
 
-// OpenCV helper functions
-cv::Mat convert_rgb_to_yuyv(const cv::Mat& input) {
-	cv::Mat tmp;
-	cv::cvtColor(input, tmp, cv::COLOR_RGB2YUV);
-	std::vector<cv::Mat> yuv;
-	cv::split(tmp, yuv);
-	cv::Mat yuyv(tmp.rows, tmp.cols, CV_8UC2);
-
-	uint8_t* outdata = (uint8_t*)yuyv.data;
-	uint8_t* ydata = (uint8_t*)yuv[0].data;
-	uint8_t* udata = (uint8_t*)yuv[1].data;
-	uint8_t* vdata = (uint8_t*)yuv[2].data;
-
-	for (unsigned int i = 0; i < yuyv.total(); i += 2) {
-		uint8_t u = (uint8_t)(((int)udata[i] + (int)udata[i + 1]) / 2);
-		uint8_t v = (uint8_t)(((int)vdata[i] + (int)vdata[i + 1]) / 2);
-
-		outdata[2 * i + 0] = ydata[i + 0];
-		outdata[2 * i + 1] = v;
-		outdata[2 * i + 2] = ydata[i + 1];
-		outdata[2 * i + 3] = u;
-	}
-
-	return yuyv;
-}
-
 timestamp_t timestamp() {
 	return std::chrono::high_resolution_clock::now();
 }
@@ -71,7 +45,6 @@ long diffnanosecs(const timestamp_t& t1, const timestamp_t& t2) {
 	return std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t2).count();
 }
 
-// encapsulation of mask calculation logic and threading
 bool is_number(const std::string &s) {
 	return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
 }
