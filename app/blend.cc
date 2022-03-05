@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <opencv2/imgproc/imgproc.hpp>
 
 cv::Mat alpha_blend(const cv::Mat& srca, const cv::Mat& srcb, const cv::Mat& mask) {
 	// alpha blend two (8UC3) source images using a mask (8UC1, 255=>srca, 0=>srcb), adapted from:
@@ -33,4 +34,31 @@ cv::Mat alpha_blend(const cv::Mat& srca, const cv::Mat& srcb, const cv::Mat& mas
 		*optr++ = (uint8_t)(( (uint32_t)(*aptr++) * aw + (uint32_t)(*bptr++) * bw ) >> 16);
 	}
 	return out;
+}
+
+cv::Mat convert_rgb_to_yuyv(const cv::Mat& input) {
+	cv::Mat tmp;
+	cv::cvtColor(input, tmp, cv::COLOR_RGB2YUV);
+	std::vector<cv::Mat> yuv;
+	cv::split(tmp, yuv);
+	cv::Mat yuyv(tmp.rows, tmp.cols, CV_8UC2);
+
+	uint8_t* outdata = (uint8_t*)yuyv.data;
+	uint8_t* ydata = (uint8_t*)yuv[0].data;
+	uint8_t* udata = (uint8_t*)yuv[1].data;
+	uint8_t* vdata = (uint8_t*)yuv[2].data;
+
+	// removing this to a const, and using const u/v values, GCC can vectorize this loop
+	const size_t total = yuyv.total();
+	for (size_t i = 0; i < total; i += 2) {
+		const uint8_t u = (uint8_t)(((int)udata[i] + (int)udata[i + 1]) / 2);
+		const uint8_t v = (uint8_t)(((int)vdata[i] + (int)vdata[i + 1]) / 2);
+
+		outdata[2 * i + 0] = ydata[i + 0];
+		outdata[2 * i + 1] = v;
+		outdata[2 * i + 2] = ydata[i + 1];
+		outdata[2 * i + 3] = u;
+	}
+
+	return yuyv;
 }
