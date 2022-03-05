@@ -21,15 +21,16 @@ cv::Mat alpha_blend(const cv::Mat& srca, const cv::Mat& srcb, const cv::Mat& mas
 	out.create(srca.size(), srca.type());
 	uint8_t *optr = (uint8_t*)out.data;
 
-	for (size_t pix = 0, npix = srca.rows * srca.cols; pix < npix; ++pix) {
-		// blending weights
-		int aw = (int)(*mptr++);
-		int bw = 255 - aw;
-
+	// by removing this to a constant, and using const weights, GCC can vectorize this loop
+	const size_t npix = srca.rows * srca.cols;
+	for (size_t pix = 0; pix < npix; ++pix) {
+		// calculate pre-multipied weights
+		const uint32_t aw = (uint32_t)(*mptr++)*257;
+		const uint32_t bw = 65535 - aw;
 		// blend each channel byte
-		*optr++ = (uint8_t)(( (int)(*aptr++) * aw + (int)(*bptr++) * bw ) >> 8);
-		*optr++ = (uint8_t)(( (int)(*aptr++) * aw + (int)(*bptr++) * bw ) >> 8);
-		*optr++ = (uint8_t)(( (int)(*aptr++) * aw + (int)(*bptr++) * bw ) >> 8);
+		*optr++ = (uint8_t)(( (uint32_t)(*aptr++) * aw + (uint32_t)(*bptr++) * bw ) >> 16);
+		*optr++ = (uint8_t)(( (uint32_t)(*aptr++) * aw + (uint32_t)(*bptr++) * bw ) >> 16);
+		*optr++ = (uint8_t)(( (uint32_t)(*aptr++) * aw + (uint32_t)(*bptr++) * bw ) >> 16);
 	}
 	return out;
 }
