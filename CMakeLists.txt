@@ -58,8 +58,8 @@ add_subdirectory(${TENSORFLOW}/tensorflow/lite
 
 # build backscrub code
 add_compile_definitions(DEEPSEG_VERSION=${DEEPSEG_VERSION} INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX})
+add_compile_options(-march=native -O9)
 include_directories(BEFORE .)
-set(CMAKE_CXX_STANDARD 17)
 
 add_library(backscrub
   lib/libbackscrub.cc
@@ -87,8 +87,6 @@ add_executable(deepseg
   app/calcmask.cc
   app/utils.cc
 )
-# special compile options for blend.cc to use SIMD optimiser
-set_source_files_properties(app/blend.cc PROPERTIES COMPILE_OPTIONS "-march=native;-O9")
 
 set_target_properties(deepseg PROPERTIES OUTPUT_NAME backscrub)
 
