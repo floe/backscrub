@@ -2,13 +2,26 @@
  * Authors - @see AUTHORS file.
 ==============================================================================*/
 
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
-#include "tensorflow/lite/optional_debug_tools.h"
+#include "libbackscrub.h"
+
+#include <algorithm>
+#include <cstdarg>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <iterator>
+#include <memory>
+#include <vector>
+
+#include <math.h>
 
 #include "transpose_conv_bias.h"
-#include "libbackscrub.h"
+
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model_builder.h"
+
 
 // Internal context structures
 enum class modeltype_t {

@@ -1,12 +1,12 @@
 #pragma once
 
 #include <chrono>
-#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 
-#include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
+
 
 // Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
 // http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).

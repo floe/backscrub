@@ -5,9 +5,12 @@
 #ifndef _LIBBACKSCRUB_H
 #define _LIBBACKSCRUB_H
 
+#include <cstddef>
+#include <string>
+
 // for cv::Mat and related types
-#include <opencv2/core/core.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+
 
 // Return a new (opaque) mask generation context
 extern void *bs_maskgen_new(

@@ -4,28 +4,22 @@
 
 #include <unistd.h>
 
-#include <chrono>
-#include <condition_variable>
 #include <cstdio>
-#include <fstream>
+#include <cstdlib>
 #include <functional>
-#include <istream>
-#include <mutex>
+#include <memory>
 #include <optional>
-#include <regex>
 #include <string>
-#include <thread>
+#include <vector>
 
-#include <opencv2/core.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/videoio.hpp>
+#include <opencv2/opencv.hpp>
 
 #include "background.h"
 #include "calcmask.h"
 #include "utils.h"
 
 #include "videoio/loopback.h"
-#include "lib/libbackscrub.h"
+
 
 // Ensure we have a default search location for resource files
 #ifndef INSTALL_PREFIX

@@ -1,9 +1,16 @@
 #include "calcmask.h"
 
+#include <cstddef>
+#include <cstdio>
 #include <mutex>
 #include <string>
 
+#include <opencv2/opencv.hpp>
+
+#include "app/utils.h"
+
 #include "lib/libbackscrub.h"
+
 
 CalcMask::CalcMask(
     const std::string& modelname,

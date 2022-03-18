@@ -3,11 +3,14 @@
 
 #include <stdio.h>
 #include <chrono>
-#include <thread>
+#include <exception>
+#include <memory>
 #include <mutex>
-#include <opencv2/videoio.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/highgui.hpp>
+#include <string>
+#include <thread>
+
+#include <opencv2/opencv.hpp>
+
 
 // Internal state of background processing
 struct background_t {

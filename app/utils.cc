@@ -1,16 +1,17 @@
 #include "utils.h"
 
-#include <unistd.h>
-
+#include <array>
 #include <algorithm>
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <regex>
+#include <vector>
 
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/videoio/videoio.hpp>
+#include <ctype.h>
+#include <unistd.h>
+
 
 int fourCcFromString(const std::string& in) {
 	if (in.empty())

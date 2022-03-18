@@ -1,5 +1,13 @@
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include <opencv2/opencv.hpp>
+
 #include "utils.h"
-#include <opencv2/imgproc/imgproc.hpp>
+
 
 cv::Mat alpha_blend(const cv::Mat& srca, const cv::Mat& srcb, const cv::Mat& mask) {
 	// alpha blend two (8UC3) source images using a mask (8UC1, 255=>srca, 0=>srcb), adapted from:
