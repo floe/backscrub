@@ -1,0 +1,16 @@
+[
+    { include: ["@<opencv2/.*>", private, "<opencv2/opencv.hpp>", public] },
+    { include: ["<ext/alloc_traits.h>", private, "<memory>", public] },
+    { include: ["@<.*_pthread.*>", private, "<pthread.h>", public] },
+    { include: ["<stdarg.h>", public, "<cstdarg>", public] },
+    { include: ["<stddef.h>", public, "<cstddef>", public] },
+    { include: ["<stdint.h>", public, "<cstdint>", public] },
+    { include: ["<stdio.h>", public, "<cstdio>", public] },
+    { include: ["<stdlib.h>", public, "<cstdlib>", public] },
+    { include: ["<ostream>", public, "<sstream>", public] },
+    { include: ["<bits/exception.h>", private, "<exception>", public] },
+    { include: ["<sys/dirent.h>", private, "<dirent.h>", public] },
+    { include: ["<sys/errno.h>", private, "<errno.h>", public] },
+
+    { include: ["\"tensorflow/lite/c/builtin_op_data.h\"", private, "\"tensorflow/lite/builtin_op_data.h\"", public] }
+]
