@@ -1,17 +1,15 @@
 #pragma once
 
-#include <unistd.h>
-
-#include <chrono>
 #include <condition_variable>
-#include <cstdint>
+#include <cstddef>
 #include <mutex>
 #include <string>
 #include <thread>
 
-#include <opencv2/core/mat.hpp>
+#include <opencv2/opencv.hpp>
 
 #include "utils.h"
+
 
 enum class thread_state_t { RUNNING, DONE };
 

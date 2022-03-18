@@ -1,18 +1,19 @@
 /* This is licensed software, @see LICENSE file.
  * Authors - @see AUTHORS file. */
 
-#include <linux/videodev2.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
+#include "loopback.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
+#include <cstdio>
+
 #include <fcntl.h>
 #include <errno.h>
+#include <string.h>
+#include <unistd.h>
 
-#include "loopback.h"
+#include <linux/videodev2.h>
+
+#include <sys/ioctl.h>
+
 
 void print_format(struct v4l2_format*vid_format) {
 	printf("vid_format->type                = %d\n",	vid_format->type );

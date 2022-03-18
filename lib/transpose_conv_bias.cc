@@ -18,8 +18,12 @@
 
 #include "transpose_conv_bias.h"
 
+#include <algorithm>
+
+#include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+
 
 namespace mediapipe {
 namespace tflite_operations {
