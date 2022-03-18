@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
 project(backscrub CXX)
 
+option(IWYU_ENABLE "Enable IWYU checks" OFF)
+set(IWYU_MAPFILE "${CMAKE_CURRENT_SOURCE_DIR}/iwyu/backscrub.imp" CACHE FILEPATH "The map file used to guide IWYU")
+if(IWYU_ENABLE)
+  find_program(IWYU_PATH NAMES include-what-you-use iwyu)
+  if(NOT IWYU_PATH)
+    message(FATAL_ERROR "Could not find the program include-what-you-use")
+  endif()
+endif()
+
 # globally set C++17 as default for compilation
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -143,6 +152,14 @@ export(TARGETS
   ${BACKSCRUB_DEPS}
   FILE BackscrubTargets.cmake
 )
+
+if(IWYU_ENABLE)
+  message(STATUS "IWYU path: ${IWYU_PATH}")
+  set_property(
+    TARGET backscrub deepseg videoio
+    PROPERTY CXX_INCLUDE_WHAT_YOU_USE "${IWYU_PATH};-Xiwyu;--no_fwd_decls;-Xiwyu;--mapping_file=${IWYU_MAPFILE}"
+  )
+endif()
 
 # installation names for library, header, backgrounds and models
 if(NOT WIN32)
