@@ -37,6 +37,24 @@ struct normalization_t {
 	float offset;
 };
 
+struct backscrub_rect_t {
+	cv::Rect src;
+	cv::Rect dst;
+
+	backscrub_rect_t() = delete;
+	backscrub_rect_t(const cv::Rect& _src, const cv::Rect& _dst) : src(_src), dst(_dst) {};
+	backscrub_rect_t(const backscrub_rect_t& other) = default;
+};
+
+struct backscrub_point_t {
+	size_t x;
+	size_t y;
+
+	backscrub_point_t() = delete;
+	backscrub_point_t(size_t _x, size_t _y) : x(_x), y(_y) {};
+	backscrub_point_t(const backscrub_point_t& other) = default;
+};
+
 struct backscrub_ctx_t {
 	// Loaded inference model
 	std::unique_ptr<tflite::FlatBufferModel> model;
@@ -55,6 +73,8 @@ struct backscrub_ctx_t {
 	void (*onmask)(void *ctx);
 	void *caller_ctx;
 
+	cv::Rect img_dim;		// Image dimensions
+
 	// Single step variables
 	cv::Mat input;			// NN input tensors
 	cv::Mat output;			// NN output tensors
@@ -72,6 +92,9 @@ struct backscrub_ctx_t {
 
 	cv::Size blur;			// Size of blur on final mask
 	cv::Mat mask;			// Fully processed mask (full image)
+
+	// Information about the regions to process
+	std::vector<backscrub_rect_t> region_rects;
 };
 
 // Debug helper
@@ -280,8 +303,40 @@ void *bs_maskgen_new(
 		return nullptr;
 	}
 
-	ctx.net_ratio = (float)ctx.input.rows / (float)ctx.input.cols;
+	ctx.img_dim = cv::Rect(0, 0, ctx.input.cols, ctx.input.rows);
+
 	ctx.src_ratio = (float)height / (float)width;
+	ctx.net_ratio = (float)ctx.input.rows / (float)ctx.input.cols;
+
+	const auto size_src = backscrub_point_t{width, height};
+	const auto size_net = backscrub_point_t(ctx.input.cols, ctx.input.rows);
+
+	auto size_filter = size_net;
+
+	/**
+	 * The following code assumes that the source image is larger
+	 * than the input for the neuronal network.
+	 * If src.x * net.y > src.y * net.x we know that the image has a wider aspect ratio then the network.
+	 * If src.x * net.y < src.y * net.x we know that the network has the wider aspect ratio.
+	 * In each case we chose the largest rectangle within the source image that fits within the network.
+	 * This rectangle is than applied multiple times by sliding it across the source image until all of the source is covered.
+	 * When sliding the network window across the source it is ensured that we do an odd number of passes.
+	 * This forces at least one window to cover the center region of the image.
+	 */
+
+	auto wnd_count = backscrub_point_t{1, 1};
+
+	if (size_src.x * size_net.y > size_src.y * size_net.x) {
+		size_filter.x = size_net.x * size_src.y / size_net.y;
+		size_filter.y = size_src.y;
+		wnd_count.x = 1 | ((size_src.x + size_filter.x - 1) / size_filter.x);
+		wnd_count.y = 1;
+	} else {
+		size_filter.x = size_src.x;
+		size_filter.y = size_net.y * size_src.x / size_net.x;
+		wnd_count.x = 1;
+		wnd_count.y = 1 | ((size_src.y + size_filter.y - 1) / size_filter.y);
+	}
 
 	// initialize mask and model-aspect ROI in center
 	if (ctx.src_ratio < ctx.net_ratio) {
@@ -292,6 +347,33 @@ void *bs_maskgen_new(
 		// if model is wider than the frame, center the frame in the model
 		ctx.src_roidim = cv::Rect(0, 0, width, height);
 		ctx.net_roidim = cv::Rect((ctx.input.cols - ctx.input.rows / ctx.src_ratio) / 2, 0, ctx.input.rows / ctx.src_ratio, ctx.input.rows);
+	}
+
+	// Item 0 is always a central cut from the image
+	ctx.region_rects.clear();
+	ctx.region_rects.emplace_back(backscrub_rect_t(
+		ctx.src_roidim, ctx.net_roidim
+	));
+
+	for(size_t idx_x = 0; idx_x < wnd_count.x; idx_x++) {
+		for(size_t idx_y = 0; idx_y < wnd_count.y; idx_x++) {
+			const size_t sx = wnd_count.x > 1 ? wnd_count.x - 1 : 1;
+			const size_t sy = wnd_count.y > 1 ? wnd_count.y - 1 : 1;
+
+			size_t dx = size_src.x - size_net.x;
+			size_t dy = size_src.y - size_net.y;
+
+			dx *= idx_x;
+			dy *= idx_y;
+
+			dx /= sx;
+			dy /= sy;
+
+			auto src_rect = cv::Rect(dx, dy, size_filter.x, size_filter.y);
+			auto dst_rect = cv::Rect(0, 0, ctx.input.cols, ctx.input.rows);
+
+			ctx.region_rects.emplace_back(src_rect, dst_rect);
+		}
 	}
 
 	ctx.mask = cv::Mat::ones(height, width, CV_8UC1) * 255;
