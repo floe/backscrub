@@ -376,9 +376,6 @@ void *bs_maskgen_new(
 		}
 	}
 
-	ctx.mask = cv::Mat::ones(height, width, CV_8UC1) * 255;
-	ctx.mask_region = ctx.mask(ctx.src_roidim);
-
 	ctx.in_u8_bgr = cv::Mat(ctx.input.rows, ctx.input.cols, CV_8UC3, cv::Scalar(0, 0, 0));
 
 	// mask blurring size
@@ -412,111 +409,121 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 
 	backscrub_ctx_t &ctx = *((backscrub_ctx_t *)context);
 
-	// map ROI
-	cv::Mat roi = frame(ctx.src_roidim);
+	ctx.mask = cv::Mat::ones(ctx.img_dim.height, ctx.img_dim.width, CV_8UC1) * 255;
 
-	cv::Mat in_roi = ctx.in_u8_bgr(ctx.net_roidim);
-	cv::resize(roi, in_roi, ctx.net_roidim.size());
+	for(auto& region: ctx.region_rects) {
+		ctx.src_roidim = region.src;
+		ctx.net_roidim = region.dst;
 
-	cv::Mat in_u8_rgb;
-	cv::cvtColor(ctx.in_u8_bgr, in_u8_rgb, cv::COLOR_BGR2RGB);
+		ctx.mask_region = ctx.mask(ctx.src_roidim);
 
-	// TODO: can convert directly to float?
+		// map ROI
+		cv::Mat roi = frame(ctx.src_roidim);
 
-	// bilateral filter to reduce noise
-	if (1) {
-		cv::Mat filtered;
-		cv::bilateralFilter(in_u8_rgb, filtered, 5, 100.0, 100.0);
-		in_u8_rgb = filtered;
-	}
+		cv::Mat in_roi = ctx.in_u8_bgr(ctx.net_roidim);
+		cv::resize(roi, in_roi, ctx.net_roidim.size());
 
-	// convert to float and normalize values expected by the model
-	in_u8_rgb.convertTo(ctx.input, CV_32FC3, ctx.norm.scaling, ctx.norm.offset);
+		cv::Mat in_u8_rgb;
+		cv::cvtColor(ctx.in_u8_bgr, in_u8_rgb, cv::COLOR_BGR2RGB);
 
-	if (ctx.onprep)
-		ctx.onprep(ctx.caller_ctx);
+		// TODO: can convert directly to float?
 
-	// Run inference
-	if (ctx.interpreter->Invoke() != kTfLiteOk) {
-		_dbg(ctx, "error: failed to interpret video frame\n");
-		return false;
-	}
+		// bilateral filter to reduce noise
+		if (1) {
+			cv::Mat filtered;
+			cv::bilateralFilter(in_u8_rgb, filtered, 5, 100.0, 100.0);
+			in_u8_rgb = filtered;
+		}
 
-	if (ctx.oninfer)
-		ctx.oninfer(ctx.caller_ctx);
+		// convert to float and normalize values expected by the model
+		in_u8_rgb.convertTo(ctx.input, CV_32FC3, ctx.norm.scaling, ctx.norm.offset);
 
-	float* tmp = (float*)ctx.output.data;
-	uint8_t* out = (uint8_t*)ctx.ofinal.data;
+		if (ctx.onprep)
+			ctx.onprep(ctx.caller_ctx);
 
-	switch (ctx.modeltype) {
-		case modeltype_t::DeepLab:
-			// find class with maximum probability
-			for (unsigned int n = 0; n < ctx.output.total(); n++) {
-				float maxval = -10000;
-				size_t maxpos = 0;
+		// Run inference
+		if (ctx.interpreter->Invoke() != kTfLiteOk) {
+			_dbg(ctx, "error: failed to interpret video frame\n");
+			return false;
+		}
 
-				for (size_t i = 0; i < cnum; i++) {
-					if (tmp[n * cnum + i] > maxval) {
-						maxval = tmp[n * cnum + i];
-						maxpos = i;
+		if (ctx.oninfer)
+			ctx.oninfer(ctx.caller_ctx);
+
+		float* tmp = (float*)ctx.output.data;
+		uint8_t* out = (uint8_t*)ctx.ofinal.data;
+
+		switch (ctx.modeltype) {
+			case modeltype_t::DeepLab:
+				// find class with maximum probability
+				for (unsigned int n = 0; n < ctx.output.total(); n++) {
+					float maxval = -10000;
+					size_t maxpos = 0;
+
+					for (size_t i = 0; i < cnum; i++) {
+						if (tmp[n * cnum + i] > maxval) {
+							maxval = tmp[n * cnum + i];
+							maxpos = i;
+						}
 					}
+
+					// set mask to 0 where class == person
+					uint8_t val = (maxpos == pers ? 0 : 255);
+					out[n] = (val & 0xE0) | (out[n] >> 3);
 				}
 
-				// set mask to 0 where class == person
-				uint8_t val = (maxpos == pers ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
-			}
+				break;
 
-			break;
+			case modeltype_t::BodyPix:
+			case modeltype_t::MLKitSelfie:
 
-		case modeltype_t::BodyPix:
-		case modeltype_t::MLKitSelfie:
+				// threshold probability
+				for (unsigned int n = 0; n < ctx.output.total(); n++) {
+					// FIXME: hardcoded threshold
+					uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
+					out[n] = (val & 0xE0) | (out[n] >> 3);
+				}
 
-			// threshold probability
-			for (unsigned int n = 0; n < ctx.output.total(); n++) {
-				// FIXME: hardcoded threshold
-				uint8_t val = (tmp[n] > 0.65 ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
-			}
+				break;
 
-			break;
+			case modeltype_t::GoogleMeetSegmentation:
 
-		case modeltype_t::GoogleMeetSegmentation:
+				/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
+				* tensor for the light model with masks for background
+				* (channel 0) and person (channel 1) where values are in
+				* range [MIN_FLOAT, MAX_FLOAT] and user has to apply
+				* softmax across both channels to yield foreground
+				* probability in [0.0, 1.0].
+				*/
+				for (unsigned int n = 0; n < ctx.output.total(); n++) {
+					float exp0 = expf(tmp[2 * n    ]);
+					float exp1 = expf(tmp[2 * n + 1]);
+					float p0 = exp0 / (exp0 + exp1);
+					float p1 = exp1 / (exp0 + exp1);
+					uint8_t val = (p0 < p1 ? 0 : 255);
+					out[n] = (val & 0xE0) | (out[n] >> 3);
+				}
 
-			/* 256 x 144 x 2 tensor for the full model or 160 x 96 x 2
-			 * tensor for the light model with masks for background
-			 * (channel 0) and person (channel 1) where values are in
-			 * range [MIN_FLOAT, MAX_FLOAT] and user has to apply
-			 * softmax across both channels to yield foreground
-			 * probability in [0.0, 1.0].
-			 */
-			for (unsigned int n = 0; n < ctx.output.total(); n++) {
-				float exp0 = expf(tmp[2 * n    ]);
-				float exp1 = expf(tmp[2 * n + 1]);
-				float p0 = exp0 / (exp0 + exp1);
-				float p1 = exp1 / (exp0 + exp1);
-				uint8_t val = (p0 < p1 ? 0 : 255);
-				out[n] = (val & 0xE0) | (out[n] >> 3);
-			}
+				break;
 
-			break;
+			case modeltype_t::Unknown:
+				_dbg(ctx, "error: unknown model type (%d)\n", ctx.modeltype);
+				return false;
+		}
 
-		case modeltype_t::Unknown:
-			_dbg(ctx, "error: unknown model type (%d)\n", ctx.modeltype);
-			return false;
+		if (ctx.onmask)
+			ctx.onmask(ctx.caller_ctx);
+
+		// scale up into full-sized mask
+		cv::Mat tmpbuf;
+		cv::resize(ctx.ofinal(ctx.net_roidim), tmpbuf, ctx.mask_region.size());
+
+		// blur at full size for maximum smoothness
+		cv::blur(tmpbuf, ctx.mask_region, ctx.blur);
+
+		// copy out
+		mask = ctx.mask;
 	}
 
-	if (ctx.onmask)
-		ctx.onmask(ctx.caller_ctx);
-
-	// scale up into full-sized mask
-	cv::Mat tmpbuf;
-	cv::resize(ctx.ofinal(ctx.net_roidim), tmpbuf, ctx.mask_region.size());
-
-	// blur at full size for maximum smoothness
-	cv::blur(tmpbuf, ctx.mask_region, ctx.blur);
-
-	// copy out
-	mask = ctx.mask;
 	return true;
 }
