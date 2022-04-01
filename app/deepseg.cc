@@ -262,7 +262,7 @@ int main(int argc, char* argv[]) try {
 	cv::VideoCapture cap(ccam.c_str(), cv::CAP_V4L2);
 
 	if(!cap.isOpened()) {
-		perror("failed to open video device");
+		perror("failed to open video capture device");
 		return 1;
 	}
 
