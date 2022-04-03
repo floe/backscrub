@@ -23,6 +23,21 @@
 #include "lib/libbackscrub.h"
 #include "background.h"
 
+// Temporary declaration of utility class until we merge experimental!
+class on_scope_exit final {
+private:
+	const std::function<void()> dtor;
+public:
+	explicit inline on_scope_exit(const std::function<void()>& f) : dtor(f) {}
+	on_scope_exit() = delete;
+	on_scope_exit(const on_scope_exit&) = delete;
+	inline ~on_scope_exit() {
+		if(dtor) {
+			dtor();
+		}
+	}
+};
+
 // Due to weirdness in the C(++) preprocessor, we have to nest stringizing macros to ensure expansion
 // http://gcc.gnu.org/onlinedocs/cpp/Stringizing.html, use _STR(<raw text or macro>).
 #define __STR(X) #X
@@ -519,7 +534,12 @@ int main(int argc, char* argv[]) try {
 		exit(1);
 	}
 
+	on_scope_exit lbfd_closer([lbfd]() {
+		loopback_free(lbfd);
+	});
+
 	cv::VideoCapture cap(s_ccam.c_str(), cv::CAP_V4L2);
+
 	if(!cap.isOpened()) {
 		perror("failed to open video device");
 		exit(1);

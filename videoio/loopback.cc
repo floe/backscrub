@@ -34,8 +34,9 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 	size_t linewidth = w * 2;
 	size_t framesize = h * linewidth;
 
-	int fdwr = 0;
-	int ret_code = 0;
+	int ret_code;
+
+	int fdwr = open(device.c_str(), O_RDWR|O_CLOEXEC);
 
 	fdwr = open(device.c_str(), O_RDWR);
 	if(fdwr < 0) {
@@ -52,15 +53,6 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 
 	memset(&vid_format, 0, sizeof(vid_format));
 	vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-
-	ret_code = ioctl(fdwr, VIDIOC_G_FMT, &vid_format);
-	if(ret_code < 0) {
-		fprintf(stderr, "%s:%d(%s): Failed to get device video format: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
-		close(fdwr);
-		return -1;
-	}
-
-	vid_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	vid_format.fmt.pix.width = w;
 	vid_format.fmt.pix.height = h;
 	vid_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
@@ -76,9 +68,38 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 		return -1;
 	}
 
-	if (debug) print_format(&vid_format);
+	ret_code = ioctl(fdwr, VIDIOC_STREAMON, &vid_format.type);
+
+	if(ret_code < 0) {
+		fprintf(stderr, "%s:%d(%s): Failed to start streaming: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
+		close(fdwr);
+		return -1;
+	}
+
+	if (debug)
+		print_format(&vid_format);
 
 	return fdwr;
+}
+
+int loopback_free(int fdwr) {
+
+	const v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+
+	int ret_code = ioctl(fdwr, VIDIOC_STREAMOFF, &type);
+
+	if(ret_code < 0) {
+		fprintf(stderr, "%s:%d(%s): Failed to stop streaming: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
+		return -1;
+	}
+
+	ret_code = close(fdwr);
+	if(ret_code < 0) {
+		fprintf(stderr, "%s:%d(%s): Failed to close video device: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
+		return -1;
+	}
+
+	return 0;
 }
 
 #ifdef standalone
