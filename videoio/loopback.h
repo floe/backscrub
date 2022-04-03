@@ -7,5 +7,6 @@
 #include <string>
 
 int loopback_init(const std::string& device, int w, int h, int debug);
+int loopback_free(int fdwr);
 
 #endif // _LOOPBACK_H_

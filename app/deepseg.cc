@@ -256,7 +256,7 @@ int main(int argc, char* argv[]) try {
 	}
 
 	on_scope_exit lbfd_closer([lbfd]() {
-		close(lbfd);
+		loopback_free(lbfd);
 	});
 
 	cv::VideoCapture cap(ccam.c_str(), cv::CAP_V4L2);
