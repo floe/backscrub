@@ -3,7 +3,7 @@
 
 ## Virtual Video Device for Background Replacement with Deep Semantic Segmentation
 
-![Screenshots with my stupid grinning face](images/screenshot.jpg)
+![Screenshots with my stupid grinning face](backgrounds/screenshot.jpg)
 (Credits for the nice backgrounds to [Mary Sabell](https://dribbble.com/shots/4686178-Bauhaus-Poster) and [PhotoFunia](https://photofunia.com/effects/retro-wave))
 
 ## Maintainers
