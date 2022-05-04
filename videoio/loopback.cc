@@ -37,8 +37,6 @@ int loopback_init(const std::string& device, int w, int h, int debug) {
 	int ret_code;
 
 	int fdwr = open(device.c_str(), O_RDWR|O_CLOEXEC);
-
-	fdwr = open(device.c_str(), O_RDWR);
 	if(fdwr < 0) {
 		fprintf(stderr, "%s:%d(%s): Failed to open video device: %s\n", __FILE__, __LINE__, __func__, strerror(errno));
 		return -1;
