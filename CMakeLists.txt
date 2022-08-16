@@ -63,6 +63,27 @@ add_compile_definitions(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
 set(CONFU_DEPENDENCIES_SOURCE_DIR ${CMAKE_BINARY_DIR})
 set(CONFU_DEPENDENCIES_BINARY_DIR ${CMAKE_BINARY_DIR}/_deps)
 
+# fixes issues/#145 - flatbuffers needs to be ~August 2022 version to compile correctly on openSUSE Tumbleweed
+# TODO: check once tensorflow is updated beyond v2.9.1
+# ..this turns out to be uglier than we would like since Overridable_FetchContentXX goop
+# ..from tensorflow won't let us override GIT_SHALLOW thus can only clone at a tag, so we
+# ..have to do the fetch ourselves, /then/ ensure the same hash value is checked later, and
+# ..that all the tensorflow-defined options are applied. Gah.
+#set(BACKSCRUB_FLATBUFFERS_VERSION a66de58af9565586832c276fbb4251fc416bf07f)
+set(BACKSCRUB_FLATBUFFERS_VERSION 20aad0c41e1252b04c72111c3eb221280a9c2009)
+include(FetchContent)
+FetchContent_Declare(
+	flatbuffers
+	GIT_REPOSITORY https://github.com/google/flatbuffers
+	GIT_TAG ${BACKSCRUB_FLATBUFFERS_VERSION}
+	GIT_PROGRESS TRUE
+	SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"
+)
+message(STATUS "Fetching flatbuffers @ ${BACKSCRUB_FLATBUFFERS_VERSION}")
+FetchContent_Populate(flatbuffers)
+unset(flatbuffers_POPULATED)
+set(OVERRIDABLE_FETCH_CONTENT_flatbuffers_GIT_TAG "${BACKSCRUB_FLATBUFFERS_VERSION}")
+
 # pull in Tensorflow Lite source build
 add_subdirectory(${TENSORFLOW}/tensorflow/lite
   "${CMAKE_CURRENT_BINARY_DIR}/tensorflow-lite" EXCLUDE_FROM_ALL)
