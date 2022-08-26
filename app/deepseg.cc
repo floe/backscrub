@@ -12,6 +12,7 @@
 #include <istream>
 #include <regex>
 #include <optional>
+#include <utility>
 #include <condition_variable>
 
 #include <opencv2/core/core.hpp>
@@ -72,6 +73,14 @@ int fourCcFromString(const std::string& in)
 		return std::stoi(in, nullptr, 16);
 	}
 	return 0;
+}
+
+// Parse a geometry specification
+std::optional<std::pair<size_t, size_t>> geometryFromString(const std::string& in) {
+	size_t w, h;
+	if (sscanf(in.c_str(), "%zux%zu", &w, &h)!=2)
+		return {};
+	return std::pair<size_t, size_t>(w, h);
 }
 
 // OpenCV helper functions
@@ -353,6 +362,9 @@ int main(int argc, char* argv[]) try {
 	size_t threads = 2;
 	size_t width = 640;
 	size_t height = 480;
+	bool setWorH = false;
+	std::optional<std::pair<size_t, size_t>> capGeo = {};
+	std::optional<std::pair<size_t, size_t>> vidGeo = {};
 	const char *back = nullptr;
 	const char *vcam = "/dev/video1";
 	const char *ccam = "/dev/video0";
@@ -423,11 +435,13 @@ int main(int argc, char* argv[]) try {
 			} else {
 				showUsage = true;
 			}
+		// deprecated width/height switches (implicitly capture and virtual camera size)
 		} else if (strncmp(argv[arg], "-w", 2) == 0) {
 			if (hasArgument && sscanf(argv[++arg], "%zu", &width)) {
 				if (!width) {
 					showUsage = true;
 				}
+				setWorH = true;
 			} else {
 				showUsage = true;
 			}
@@ -436,6 +450,24 @@ int main(int argc, char* argv[]) try {
 				if (!height) {
 					showUsage = true;
 				}
+				setWorH = true;
+			} else {
+				showUsage = true;
+			}
+		// replacement geometry switches (separate capture and virtual camera size)
+		} else if (strncmp(argv[arg], "--cg", 4) == 0) {
+			if (hasArgument) {
+				capGeo = geometryFromString(argv[++arg]);
+				if (!capGeo)
+					showUsage = true;
+			} else {
+				showUsage = true;
+			}
+		} else if (strncmp(argv[arg], "--vg", 4) == 0) {
+			if (hasArgument) {
+				vidGeo = geometryFromString(argv[++arg]);
+				if (!vidGeo)
+					showUsage = true;
 			} else {
 				showUsage = true;
 			}
@@ -461,19 +493,30 @@ int main(int argc, char* argv[]) try {
 		}
 	}
 
+	// prevent use of both deprecated and current switches
+	if (setWorH && (capGeo || vidGeo)) {
+		showUsage = true;
+		fprintf(stderr, "Error: (DEPRECATED) -w/-h used in conjunction with --cg/--vg.\n");
+	}
+	// set capture device geometry from deprecated switches if not set already
+	if (!capGeo) {
+		capGeo = std::pair<size_t, size_t>(width, height);
+	}
 	if (showUsage) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "usage:\n");
-		fprintf(stderr, "  backscrub [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [-w <width>] [-h <height>]\n");
-		fprintf(stderr, "    [-t <threads>] [-b <background>] [-m <modell>] [-p <option:value>]\n");
+		fprintf(stderr, "  backscrub [-?] [-d] [-p] [-c <capture>] [-v <virtual>] [--cg <width>x<height>]\n");
+		fprintf(stderr, "    [--vg <width>x<height>] [-t <threads>] [-b <background>] [-m <modell>] [-p <option:value>]\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "-?            Display this usage information\n");
 		fprintf(stderr, "-d            Increase debug level\n");
 		fprintf(stderr, "-s            Show progress bar\n");
-		fprintf(stderr, "-c            Specify the video source (capture) device\n");
-		fprintf(stderr, "-v            Specify the video target (sink) device\n");
-		fprintf(stderr, "-w            Specify the video stream width\n");
-		fprintf(stderr, "-h            Specify the video stream height\n");
+		fprintf(stderr, "-c            Specify the video capture (source) device\n");
+		fprintf(stderr, "-v            Specify the virtual camera (sink) device\n");
+		fprintf(stderr, "-w            DEPRECATED: Specify the video stream width\n");
+		fprintf(stderr, "-h            DEPRECATED: Specify the video stream height\n");
+		fprintf(stderr, "--cg          Specify the capture device geometry as <width>x<height>\n");
+		fprintf(stderr, "--vg          Specify the virtual camera geometry as <width>x<height>\n");
 		fprintf(stderr, "-f            Specify the camera video format, i.e. MJPG or 47504A4D.\n");
 		fprintf(stderr, "-t            Specify the number of threads used for processing\n");
 		fprintf(stderr, "-b            Specify the background (any local or network OpenCV source) e.g.\n");
@@ -496,11 +539,42 @@ int main(int argc, char* argv[]) try {
 		s_vcam = "/dev/" + s_vcam;
 	std::optional<std::string> s_model = resolve_path(modelname, "models");
 	std::optional<std::string> s_backg = back ? resolve_path(back, "backgrounds") : std::nullopt;
+	// open capture early to resolve true geometry
+	cv::VideoCapture cap(s_ccam.c_str(), cv::CAP_V4L2);
+	if(!cap.isOpened()) {
+		perror("failed to open capture device");
+		exit(1);
+	}
+	// set fourcc (if specified) /before/ attempting to set geometry (@see issue146)
+	if (fourcc)
+		cap.set(cv::CAP_PROP_FOURCC, fourcc);
+	cap.set(cv::CAP_PROP_FRAME_WIDTH,  capGeo.value().first);
+	cap.set(cv::CAP_PROP_FRAME_HEIGHT, capGeo.value().second);
+	cap.set(cv::CAP_PROP_CONVERT_RGB, true);
+	std::optional<std::pair<size_t, size_t>> tmpGeo = std::pair<size_t, size_t>(
+		(size_t)cap.get(cv::CAP_PROP_FRAME_WIDTH),
+		(size_t)cap.get(cv::CAP_PROP_FRAME_HEIGHT)
+	);
+	if (tmpGeo != capGeo) {
+		fprintf(stderr, "Warning: capture device geometry changed from requested values.\n");
+		capGeo = tmpGeo;
+	}
+	if (!vidGeo) {
+		vidGeo = capGeo;
+	}
+	// aspect ratio changed? warn
+	// NB: we calculate this way round to avoid comparing doubles..
+	size_t expWidth = (size_t)((double)vidGeo.value().second * (double)capGeo.value().first/(double)capGeo.value().second);
+	if (expWidth != vidGeo.value().first) {
+		fprintf(stderr, "Warning: virtual camera aspect ratio does not match capture device.\n");
+	}
+
+	// dump settings..
 	printf("debug:  %d\n", debug);
 	printf("ccam:   %s\n", s_ccam.c_str());
 	printf("vcam:   %s\n", s_vcam.c_str());
-	printf("width:  %zu\n", width);
-	printf("height: %zu\n", height);
+	printf("capGeo: %zux%zu\n", capGeo.value().first, capGeo.value().second);
+	printf("vidGeo: %zux%zu\n", vidGeo.value().first, vidGeo.value().second);
 	printf("flip_h: %s\n", flipHorizontal ? "yes" : "no");
 	printf("flip_v: %s\n", flipVertical ? "yes" : "no");
 	printf("threads:%zu\n", threads);
@@ -525,10 +599,11 @@ int main(int argc, char* argv[]) try {
 			printf("Warning: could not load background image, defaulting to green\n");
 		}
 	}
-	// default green screen background
-	cv::Mat bg = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 255, 0));
+	// default green screen background (at capture true geometry)
+	cv::Mat bg = cv::Mat(capGeo.value().second, capGeo.value().first, CV_8UC3, cv::Scalar(0, 255, 0));
 
-	int lbfd = loopback_init(s_vcam, width, height, debug);
+	// Virtual camera (at specified geometry)
+	int lbfd = loopback_init(s_vcam, vidGeo.value().first, vidGeo.value().second, debug);
 	if(lbfd < 0) {
 		fprintf(stderr, "Failed to initialize vcam device.\n");
 		exit(1);
@@ -538,22 +613,11 @@ int main(int argc, char* argv[]) try {
 		loopback_free(lbfd);
 	});
 
-	cv::VideoCapture cap(s_ccam.c_str(), cv::CAP_V4L2);
 
-	if(!cap.isOpened()) {
-		perror("failed to open video device");
-		exit(1);
-	}
-
-	cap.set(cv::CAP_PROP_FRAME_WIDTH,  width);
-	cap.set(cv::CAP_PROP_FRAME_HEIGHT, height);
-	if (fourcc)
-		cap.set(cv::CAP_PROP_FOURCC, fourcc);
-	cap.set(cv::CAP_PROP_CONVERT_RGB, true);
-
-	cv::Mat mask(height, width, CV_8U);
+	// Processing components, all at capture true geometry
+	cv::Mat mask(capGeo.value().second, capGeo.value().first, CV_8U);
 	cv::Mat raw;
-	CalcMask ai(s_model.value(), threads, width, height);
+	CalcMask ai(s_model.value(), threads, capGeo.value().first, capGeo.value().second);
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -582,7 +646,7 @@ int main(int argc, char* argv[]) try {
 			// - default green (initial value)
 			bool canBlur = false;
 			if (pbk) {
-				if (grab_background(pbk, width, height, bg)<0)
+				if (grab_background(pbk, capGeo.value().first, capGeo.value().second, bg)<0)
 					throw "Failed to read background frame";
 				canBlur = true;
 			} else if (blur_strength) {
@@ -609,6 +673,10 @@ int main(int argc, char* argv[]) try {
 		}
 		ti.postns = timestamp();
 
+		// scale to virtual camera geometry (if required)
+		if (vidGeo != capGeo) {
+			cv::resize(raw, raw, cv::Size(vidGeo.value().first,vidGeo.value().second));
+		}
 		// write frame to v4l2loopback as YUYV
 		raw = convert_rgb_to_yuyv(raw);
 		int framesize = raw.step[0]*raw.rows;
@@ -655,10 +723,11 @@ int main(int argc, char* argv[]) try {
 
 		cv::Mat test;
 		cv::cvtColor(raw,test,cv::COLOR_YUV2BGR_YUYV);
-		// frame rates at the bottom
+		// frame rates & sizes at the bottom
 		if (showFPS) {
 			char status[80];
-			snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f", mfps, afps);
+			snprintf(status, sizeof(status), "MainFPS: %5.2f AiFPS: %5.2f (%zux%zu->%zux%zu)",
+				mfps, afps, capGeo.value().first, capGeo.value().second, vidGeo.value().first, vidGeo.value().second);
 			cv::putText(test, status, cv::Point(5, test.rows-5), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 255));
 		}
 		// keyboard help
@@ -696,11 +765,11 @@ int main(int argc, char* argv[]) try {
 				int mheight = mask.rows*160/mask.cols;
 				cv::resize(mask, smask, cv::Size(160, mheight));
 				cv::cvtColor(smask, cmask, cv::COLOR_GRAY2BGR);
-				cv::Rect r = cv::Rect(width-160, 0, 160, mheight);
+				cv::Rect r = cv::Rect(vidGeo.value().first-160, 0, 160, mheight);
 				cv::Mat mri = test(r);
 				cmask.copyTo(mri);
 				cv::rectangle(test, r, cv::Scalar(255,255,255));
-				cv::putText(test, "Mask", cv::Point(width-155,115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
+				cv::putText(test, "Mask", cv::Point(vidGeo.value().first-155,115), cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0,255,255));
 			}
 		}
 		cv::imshow(DEBUG_WIN_NAME, test);
