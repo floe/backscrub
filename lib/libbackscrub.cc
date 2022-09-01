@@ -369,7 +369,7 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 	// and the wanted roi may be greater as 33x33 so we can crash with
 	// cv::resize(ctx.ofinal(ctx.in_roidim),tmpbuf,ctx.mroi.size());
 	ctx.ofinal.copyTo(tmpbuf);
-	cv::resize(tmpbuf,tmpbuf,ctx.mroi.size());
+	cv::resize(tmpbuf, tmpbuf, ctx.mroi.size());
 
 	// blur at full size for maximum smoothness
 	cv::blur(tmpbuf,ctx.mroi,ctx.blur);
