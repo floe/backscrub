@@ -686,7 +686,7 @@ int main(int argc, char* argv[]) try {
 					tw = capGeo.value().first;
 					th = capGeo.value().second;
 				}
-				if (grab_background(pbk, tw, th, bg)<0)
+				if (grab_background(pbk, tw, th, bg) < 0)
 					throw "Failed to read background frame";
 				canBlur = true;
 			} else if (blur_strength) {
