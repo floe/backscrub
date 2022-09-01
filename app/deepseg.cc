@@ -665,6 +665,7 @@ int main(int argc, char* argv[]) try {
 		if ( crop_region.height) {
 			raw((cv::Rect_<int>)crop_region).copyTo(raw);
 		}
+
 		ai.set_input_frame(raw);
 
 		if (filterActive) {
