@@ -372,7 +372,7 @@ int main(int argc, char* argv[]) try {
 	bool flipVertical = false;
 	int fourcc = 0;
 	size_t blur_strength = 0;
-	cv::Rect_<int> crop_region(0,0,0,0);
+	cv::Rect_<int> crop_region(0, 0, 0, 0);
 
 	const char* modelname = "selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
 
