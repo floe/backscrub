@@ -385,7 +385,7 @@ cv::Rect calcCropping(int cw, int ch, int vw, int vh)
 	// we can crop the source image. For example if the
 	// input image has a 16:9 (1280x720) ratio and the output is 4:3 (960x720)
 	// we will return the cropRegion set as x=160, width=960, y=0, height=720
-	// which the centered part ofe the original image
+	// which is the centered part of the original image
 	cv::Rect cropRegion = {0,0,0,0};
 	float sc = (float)vw / cw;
 	float st = (float)vh / ch;
