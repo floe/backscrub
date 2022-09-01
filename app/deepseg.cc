@@ -573,10 +573,9 @@ int main(int argc, char* argv[]) try {
 	if (expWidth != vidGeo.value().first &&
 		vidGeo.value().first <= capGeo.value().first &&
 		vidGeo.value().second <= capGeo.value().second) {
-			crop_region = calcCropping(capGeo.value().first,
-			                           capGeo.value().second,
-			                           vidGeo.value().first,
-			                           vidGeo.value().second);
+			crop_region = calcCropping(
+				capGeo.value().first, capGeo.value().second,
+				vidGeo.value().first, vidGeo.value().second);
 	}
 
 	// dump settings..
