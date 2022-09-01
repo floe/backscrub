@@ -381,7 +381,7 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 
 cv::Rect calcCropping(int cw, int ch, int vw, int vh)
 {
-	// if the input and output aspect reatio are not the same
+	// if the input and output aspect ratio are not the same
 	// we can crop the source image. For example if the
 	// input image has a 16:9 (1280x720) ratio and the output is 4:3 (960x720)
 	// we will return the cropRegion set as x=160, width=960, y=0, height=720
