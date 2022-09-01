@@ -639,14 +639,10 @@ int main(int argc, char* argv[]) try {
 	}
 
 	cv::Mat raw;
-	int aiw,aih;
-	if ( crop_region.width == 0) {
-		aiw=capGeo.value().first;
-		aih=capGeo.value().second;
-	} else {
-		aiw=crop_region.width;
-		aih=crop_region.height;
-	}
+	int aiw, aih;
+	std::tie(aiw, aih) = !crop_region.width ?
+		{ capGeo.value().first, capGeo.value().second } :
+		{ crop_region.width, crop_region.height };
 	CalcMask ai(s_model.value(), threads, aiw, aih);
 
 	ti.lastns = timestamp();
