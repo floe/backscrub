@@ -390,11 +390,13 @@ cv::Rect calcCropping(int cw, int ch, int vw, int vh)
 	float sc = (float)vw / cw;
 	float st = (float)vh / ch;
 	sc = st > sc ? st : sc;
-	int sz = (int)(vw / sc) - cw;
-	cropRegion.x =  (sz < 0 ? -sz : sz)/2;
-	sz = (int)(vh / sc) - ch;
-	cropRegion.y =  (sz < 0 ? -sz : sz)/2;
-	cropRegion.width = cw - cropRegion.x*2;
-	cropRegion.height = ch - cropRegion.y*2;
+
+	int sx = (int)(vw / sc) - cw;
+	cropRegion.x =  (sx < 0 ? -sx : sx) / 2;
+	int sy = (int)(vh / sc) - ch;
+	cropRegion.y =  (sy < 0 ? -sy : sy) / 2;
+
+	cropRegion.width = cw - cropRegion.x * 2;
+	cropRegion.height = ch - cropRegion.y * 2;
 	return cropRegion;
 }
