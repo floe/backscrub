@@ -372,7 +372,7 @@ int main(int argc, char* argv[]) try {
 	bool flipVertical = false;
 	int fourcc = 0;
 	size_t blur_strength = 0;
-	cv::Rect_<int> crop_region(0,0,0,0);
+	cv::Rect_<int> crop_region(0, 0, 0, 0);
 
 	const char* modelname = "selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
 
@@ -573,10 +573,9 @@ int main(int argc, char* argv[]) try {
 	if (expWidth != vidGeo.value().first &&
 		vidGeo.value().first <= capGeo.value().first &&
 		vidGeo.value().second <= capGeo.value().second) {
-			crop_region = calcCropping(capGeo.value().first,
-			                           capGeo.value().second,
-			                           vidGeo.value().first,
-			                           vidGeo.value().second);
+			crop_region = calcCropping(
+				capGeo.value().first, capGeo.value().second,
+				vidGeo.value().first, vidGeo.value().second);
 	}
 
 	// dump settings..
@@ -612,11 +611,11 @@ int main(int argc, char* argv[]) try {
 	// default green screen background (at capture true geometry)
 	cv::Mat bg;
 	if ( crop_region.height == 0) {
-		bg = cv::Mat(capGeo.value().second, capGeo.value().first, CV_8UC3, cv::Scalar(0, 255, 0));
+		bg = cv::Mat(capGeo.value().first, capGeo.value().second, CV_8UC3, cv::Scalar(0, 255, 0));
 	} else {
 		bg = cv::Mat(crop_region.width, crop_region.height, CV_8UC3, cv::Scalar(0, 255, 0));
 	}
-
+	
 	// Virtual camera (at specified geometry)
 	int lbfd = loopback_init(s_vcam, vidGeo.value().first, vidGeo.value().second, debug);
 	if(lbfd < 0) {
@@ -663,7 +662,6 @@ int main(int argc, char* argv[]) try {
 		// copy new frame to buffer
 		cap.retrieve(raw);
 		ti.retrns = timestamp();
-		ti.copyns = timestamp();
 
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
@@ -671,11 +669,13 @@ int main(int argc, char* argv[]) try {
 			raw((cv::Rect_<int>)crop_region).copyTo(raw);
 		}
 		ai.set_input_frame(raw);
+		ti.copyns = timestamp();
+
+		// do background detection magic
+		ai.get_output_mask(mask);
+		ti.copyns = timestamp();
 
 		if (filterActive) {
-			// do background detection magic
-			ai.get_output_mask(mask);
-
 			// get background frame:
 			// - specified source if set
 			// - copy of input video if blur_strength != 0
