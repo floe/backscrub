@@ -627,7 +627,6 @@ int main(int argc, char* argv[]) try {
 		loopback_free(lbfd);
 	});
 
-
 	// Processing components, all at capture true geometry
 	cv::Mat mask;
 	if ( crop_region.height ) {
