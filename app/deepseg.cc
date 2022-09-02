@@ -613,7 +613,7 @@ int main(int argc, char* argv[]) try {
 	if ( crop_region.height == 0) {
 		bg_dim = {crop_region.width, crop_region.height};
 	}
-	cv::Mat bg(bg_dim.value().first, bg_dim.value().second, CV_8UC3, cv::Scalar(0, 255, 0));
+	cv::Mat bg(bg_dim.value().second, bg_dim.value().first, CV_8UC3, cv::Scalar(0, 255, 0));
 
 	// Virtual camera (at specified geometry)
 	int lbfd = loopback_init(s_vcam, vidGeo.value().first, vidGeo.value().second, debug);
