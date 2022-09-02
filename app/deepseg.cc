@@ -661,7 +661,7 @@ int main(int argc, char* argv[]) try {
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
 		if ( crop_region.height) {
-			raw((cv::Rect_<int>)crop_region).copyTo(raw);
+			raw(crop_region).copyTo(raw);
 		}
 		ai.set_input_frame(raw);
 		ti.copyns = timestamp();
