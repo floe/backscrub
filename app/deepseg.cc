@@ -609,12 +609,11 @@ int main(int argc, char* argv[]) try {
 		}
 	}
 	// default green screen background (at capture true geometry)
-	cv::Mat bg;
+	std::optional<std::pair<size_t, size_t>> bg_dim = capGeo;
 	if ( crop_region.height == 0) {
-		bg = cv::Mat(capGeo.value().first, capGeo.value().second, CV_8UC3, cv::Scalar(0, 255, 0));
-	} else {
-		bg = cv::Mat(crop_region.width, crop_region.height, CV_8UC3, cv::Scalar(0, 255, 0));
+		bg_dim = {crop_region.width, crop_region.height};
 	}
+	cv::Mat bg(bg_dim.value().first, bg_dim.value().second, CV_8UC3, cv::Scalar(0, 255, 0));
 
 	// Virtual camera (at specified geometry)
 	int lbfd = loopback_init(s_vcam, vidGeo.value().first, vidGeo.value().second, debug);
@@ -628,14 +627,11 @@ int main(int argc, char* argv[]) try {
 	});
 
 	// Processing components, all at capture true geometry
-	cv::Mat mask;
+	std::optional<std::pair<size_t, size_t>> mask_dim = capGeo;
 	if ( crop_region.height ) {
-		cv::Mat masktmp((int)(crop_region.height), (int)(crop_region.width), CV_8U);
-		mask = masktmp;
-	} else {
-		cv::Mat masktmp(capGeo.value().second, capGeo.value().first, CV_8U);
-		mask = masktmp;
+		mask_dim = {crop_region.width, crop_region.height};
 	}
+	cv::Mat mask(mask_dim.value().second, mask_dim.value().first, CV_8U);
 
 	cv::Mat raw;
 	int aiw,aih;
