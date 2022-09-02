@@ -629,8 +629,8 @@ int main(int argc, char* argv[]) try {
 
 
 	// Processing components, all at capture true geometry
-    cv::Mat mask;
-    if ( crop_region.height ) {
+	cv::Mat mask;
+	if ( crop_region.height ) {
 		cv::Mat masktmp((int)(crop_region.height), (int)(crop_region.width), CV_8U);
 		mask = masktmp;
 	} else {
