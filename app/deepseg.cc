@@ -615,7 +615,7 @@ int main(int argc, char* argv[]) try {
 	} else {
 		bg = cv::Mat(crop_region.width, crop_region.height, CV_8UC3, cv::Scalar(0, 255, 0));
 	}
-	
+
 	// Virtual camera (at specified geometry)
 	int lbfd = loopback_init(s_vcam, vidGeo.value().first, vidGeo.value().second, debug);
 	if(lbfd < 0) {
@@ -690,7 +690,7 @@ int main(int argc, char* argv[]) try {
 					tw = capGeo.value().first;
 					th = capGeo.value().second;
 				}
-				if (grab_background(pbk, tw, th, bg)<0)
+				if (grab_background(pbk, tw, th, bg) < 0)
 					throw "Failed to read background frame";
 				canBlur = true;
 			} else if (blur_strength) {
