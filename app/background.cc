@@ -185,12 +185,12 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
     if (pbkd->video) {
         // grab frame & frame no. under mutex
         std::unique_lock<std::mutex> hold(pbkd->rawmux);
-        cv::Rect_<int> crop = calcCropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+        cv::Rect crop = calcCropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
         cv::resize(pbkd->raw(crop), out, cv::Size(width, height));
         frm = pbkd->frame;
     } else {
         // resize still image as requested into out
-        cv::Rect_<int> crop = calcCropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+        cv::Rect crop = calcCropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
         cv::resize(pbkd->raw(crop), out, cv::Size(width, height));
         out = pbkd->raw;
         frm = 1;
