@@ -570,12 +570,12 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "Warning: virtual camera aspect ratio does not match capture device.\n");
 	}
 	// calculate crop region, only if result always smaller
-	if (expWidth != vidGeo.value().first &&
-		vidGeo.value().first <= capGeo.value().first &&
-		vidGeo.value().second <= capGeo.value().second) {
+	if (expWidth != vidGeo->first &&
+		vidGeo->first <= capGeo->first &&
+		vidGeo->second <= capGeo->second) {
 			crop_region = calcCropping(
-				capGeo.value().first, capGeo.value().second,
-				vidGeo.value().first, vidGeo.value().second);
+				capGeo->first, capGeo->second,
+				vidGeo->first, vidGeo->second);
 	}
 
 	// dump settings..
@@ -609,11 +609,11 @@ int main(int argc, char* argv[]) try {
 		}
 	}
 	// default green screen background (at capture true geometry)
-	std::optional<std::pair<size_t, size_t>> bg_dim = capGeo;
-	if ( crop_region.height == 0) {
+	std::pair<size_t, size_t> bg_dim = *capGeo;
+	if (!crop_region.height) {
 		bg_dim = {crop_region.width, crop_region.height};
 	}
-	cv::Mat bg(bg_dim.value().second, bg_dim.value().first, CV_8UC3, cv::Scalar(0, 255, 0));
+	cv::Mat bg(bg_dim.second, bg_dim.first, CV_8UC3, cv::Scalar(0, 255, 0));
 
 	// Virtual camera (at specified geometry)
 	int lbfd = loopback_init(s_vcam, vidGeo.value().first, vidGeo.value().second, debug);
@@ -627,22 +627,22 @@ int main(int argc, char* argv[]) try {
 	});
 
 	// Processing components, all at capture true geometry
-	std::optional<std::pair<size_t, size_t>> mask_dim = capGeo;
-	if ( crop_region.height ) {
+	std::pair<size_t, size_t> mask_dim = *capGeo;
+	if (crop_region.height) {
 		mask_dim = {crop_region.width, crop_region.height};
 	}
-	cv::Mat mask(mask_dim.value().second, mask_dim.value().first, CV_8U);
+	cv::Mat mask(mask_dim.second, mask_dim.first, CV_8U);
 
 	cv::Mat raw;
 	int aiw,aih;
-	if ( crop_region.width == 0) {
-		aiw=capGeo.value().first;
-		aih=capGeo.value().second;
+	if (!crop_region.width) {
+		aiw=capGeo->first;
+		aih=capGeo->second;
 	} else {
 		aiw=crop_region.width;
 		aih=crop_region.height;
 	}
-	CalcMask ai(s_model.value(), threads, aiw, aih);
+	CalcMask ai(*s_model, threads, aiw, aih);
 
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
@@ -660,7 +660,7 @@ int main(int argc, char* argv[]) try {
 
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
-		if ( crop_region.height) {
+		if (crop_region.height) {
 			raw(crop_region).copyTo(raw);
 		}
 		ai.set_input_frame(raw);
@@ -682,8 +682,8 @@ int main(int argc, char* argv[]) try {
 					tw = crop_region.width;
 					th = crop_region.height;
 				} else {
-					tw = capGeo.value().first;
-					th = capGeo.value().second;
+					tw = capGeo->first;
+					th = capGeo->second;
 				}
 				if (grab_background(pbk, tw, th, bg) < 0)
 					throw "Failed to read background frame";
