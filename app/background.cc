@@ -191,8 +191,7 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
     } else {
         // resize still image as requested into out
         cv::Rect crop = calcCropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
-        cv::resize(pbkd->raw(crop), out, cv::Size(width, height));
-        pbkd->raw = out;
+        cv::resize(pbkd->raw(crop), pbkd->raw, cv::Size(width, height));
         frm = 1;
     }
     return frm;
