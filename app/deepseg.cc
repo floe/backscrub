@@ -610,7 +610,7 @@ int main(int argc, char* argv[]) try {
 	}
 	// default green screen background (at capture true geometry)
 	std::pair<size_t, size_t> bg_dim = *capGeo;
-	if (!crop_region.height) {
+	if (crop_region.height) {
 		bg_dim = {crop_region.width, crop_region.height};
 	}
 	cv::Mat bg(bg_dim.second, bg_dim.first, CV_8UC3, cv::Scalar(0, 255, 0));
@@ -678,7 +678,7 @@ int main(int argc, char* argv[]) try {
 			bool canBlur = false;
 			if (pbk) {
 				int tw,th;
-				if ( crop_region.height ) {
+				if (crop_region.height) {
 					tw = crop_region.width;
 					th = crop_region.height;
 				} else {
