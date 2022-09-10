@@ -20,6 +20,7 @@ struct background_t {
     int frame;
     double fps;
     cv::Mat raw;
+    int bg_stored;
     std::mutex rawmux;
     cv::Mat thumb;
     std::mutex thumbmux;
@@ -132,6 +133,7 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
         pbkd->debug = debug;
         pbkd->video = false;
         pbkd->run = false;
+        pbkd->bg_stored = false;
         pbkd->cap.open(path, cv::CAP_ANY);    // explicitly ask for auto-detection of backend
         if (!pbkd->cap.isOpened()) {
             if (pbkd->debug) fprintf(stderr, "background: cap cannot open: %s\n", path.c_str());
@@ -145,7 +147,9 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
         //  if: can read 2 video frames => it's a video
         //  else: is loaded as an image => it's an image
         //  else: it's not usable.
-        if (pbkd->cap.read(pbkd->raw) && pbkd->cap.read(pbkd->raw)) {
+//        if (pbkd->cap.read(pbkd->raw) && pbkd->cap.read(pbkd->raw)) {
+printf("pbkd->fps %g cnt %d\n", pbkd->fps,cnt);
+        if (cnt > -1) {
             // it's a video, try a reset and start reader thread..
             if (pbkd->cap.set(cv::CAP_PROP_POS_FRAMES, 0))
                 pbkd->frame = 0;
@@ -156,6 +160,7 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
             pbkd->thread = std::thread(read_thread, std::weak_ptr<background_t>(pbkd));
         } else {
             // static image file, try loading..
+printf("Read image\n");
             pbkd->cap.release();
             pbkd->raw = cv::imread(path);
             if (pbkd->raw.empty()) {
@@ -185,19 +190,22 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
     if (pbkd->video) {
         // grab frame & frame no. under mutex
         std::unique_lock<std::mutex> hold(pbkd->rawmux);
-        cv::Rect crop = calcCropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+        cv::Rect crop = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
         cv::resize(pbkd->raw(crop), out, cv::Size(width, height));
         frm = pbkd->frame;
     } else {
-        // resize still image as requested into out
-        cv::Rect crop = calcCropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
-        // Under some circumstances we must do the job in two steps!
-        // Otherwise this resize(pbkd->raw(crop), pbkd->raw, ...) may fail.
-        pbkd->raw(crop).copyTo(out);
-        cv::resize(out, out, cv::Size(width, height));
-        pbkd->raw = out;
-        frm = 1;
-    }
+		if (!pbkd->bg_stored) {
+			// resize still image as requested into out
+			cv::Rect crop = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+			// Under some circumstances we must do the job in two steps!
+			// Otherwise this resize(pbkd->raw(crop), pbkd->raw, ...) may fail.
+			pbkd->raw(crop).copyTo(pbkd->raw);
+			cv::resize(pbkd->raw, pbkd->raw, cv::Size(width, height));
+			pbkd->bg_stored = true;
+		}
+		out = pbkd->raw ;
+		frm = 1;
+	}
     return frm;
 }
 

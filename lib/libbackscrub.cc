@@ -379,25 +379,24 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 	return true;
 }
 
-cv::Rect calcCropping(int cw, int ch, int vw, int vh) {
+cv::Rect bs_calc_cropping(int inWidth, int inHeight, int targetWidth, int targetHigh) {
 	// if the input and output aspect ratio are not the same
 	// we can crop the source image. For example if the
 	// input image has a 16:9 (1280x720) ratio and the output is 4:3 (960x720)
 	// we will return the cropRegion set as x=160, width=960, y=0, height=720
 	// which is the centered part of the original image
 	cv::Rect cropRegion = {0, 0, 0, 0};
-	float sc = (float)vw / cw;
-	float st = (float)vh / ch;
+	float sc = (float)targetWidth / inWidth;
+	float st = (float)targetHigh / inHeight;
 	sc = st > sc ? st : sc;
 
-	int sx = (int)(vw / sc) - cw;
+	int sx = (int)(targetWidth / sc) - inWidth;
 	cropRegion.x =  (sx < 0 ? -sx : sx) / 2;
 
-	int sy = (int)(vh / sc) - ch;
+	int sy = (int)(targetHigh / sc) - inHeight;
 	cropRegion.y =  (sy < 0 ? -sy : sy) / 2;
 
-	cropRegion.width = cw - cropRegion.x * 2;
-	cropRegion.height = ch - cropRegion.y * 2;
-
+	cropRegion.width = inWidth - cropRegion.x * 2;
+	cropRegion.height = inHeight - cropRegion.y * 2;
 	return cropRegion;
 }

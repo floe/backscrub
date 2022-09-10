@@ -84,7 +84,7 @@ std::optional<std::pair<size_t, size_t>> geometryFromString(const std::string& i
 }
 
 // OpenCV helper functions
-cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
+cv::Mat convert_rgb_to_yuyv(cv::Mat input) {
 	cv::Mat tmp;
 	cv::cvtColor(input, tmp, cv::COLOR_RGB2YUV);
 	std::vector<cv::Mat> yuv;
@@ -570,12 +570,10 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "Warning: virtual camera aspect ratio does not match capture device.\n");
 	}
 	// calculate crop region, only if result always smaller
-	if (expWidth != vidGeo->first &&
-		vidGeo->first <= capGeo->first &&
-		vidGeo->second <= capGeo->second) {
-			crop_region = calcCropping(
-				capGeo->first, capGeo->second,
-				vidGeo->first, vidGeo->second);
+	if (expWidth != vidGeo->first) {
+		crop_region = bs_calc_cropping(
+		              capGeo->first, capGeo->second,
+		              vidGeo->first, vidGeo->second);
 	}
 
 	// dump settings..
