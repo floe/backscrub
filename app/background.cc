@@ -147,8 +147,6 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
         //  if: can read 2 video frames => it's a video
         //  else: is loaded as an image => it's an image
         //  else: it's not usable.
-//        if (pbkd->cap.read(pbkd->raw) && pbkd->cap.read(pbkd->raw)) {
-printf("pbkd->fps %g cnt %d\n", pbkd->fps,cnt);
         if (cnt > -1) {
             // it's a video, try a reset and start reader thread..
             if (pbkd->cap.set(cv::CAP_PROP_POS_FRAMES, 0))
@@ -160,7 +158,6 @@ printf("pbkd->fps %g cnt %d\n", pbkd->fps,cnt);
             pbkd->thread = std::thread(read_thread, std::weak_ptr<background_t>(pbkd));
         } else {
             // static image file, try loading..
-printf("Read image\n");
             pbkd->cap.release();
             pbkd->raw = cv::imread(path);
             if (pbkd->raw.empty()) {
