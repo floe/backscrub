@@ -20,7 +20,7 @@ struct background_t {
     int frame;
     double fps;
     cv::Mat raw;
-    int bg_stored;
+    bool bg_stored;
     std::mutex rawmux;
     cv::Mat thumb;
     std::mutex thumbmux;
@@ -147,7 +147,7 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
         //  if: can read 2 video frames => it's a video
         //  else: is loaded as an image => it's an image
         //  else: it's not usable.
-        if (cnt > -1) {
+        if (pbkd->fps > 0) {
             // it's a video, try a reset and start reader thread..
             if (pbkd->cap.set(cv::CAP_PROP_POS_FRAMES, 0))
                 pbkd->frame = 0;
@@ -191,18 +191,18 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
         cv::resize(pbkd->raw(crop), out, cv::Size(width, height));
         frm = pbkd->frame;
     } else {
-		if (!pbkd->bg_stored) {
-			// resize still image as requested into out
-			cv::Rect crop = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
-			// Under some circumstances we must do the job in two steps!
-			// Otherwise this resize(pbkd->raw(crop), pbkd->raw, ...) may fail.
-			pbkd->raw(crop).copyTo(pbkd->raw);
-			cv::resize(pbkd->raw, pbkd->raw, cv::Size(width, height));
-			pbkd->bg_stored = true;
-		}
-		out = pbkd->raw ;
-		frm = 1;
-	}
+        if (!pbkd->bg_stored) {
+            // resize still image as requested into out
+            cv::Rect crop = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+            // Under some circumstances we must do the job in two steps!
+            // Otherwise this resize(pbkd->raw(crop), pbkd->raw, ...) may fail.
+            pbkd->raw(crop).copyTo(pbkd->raw);
+            cv::resize(pbkd->raw, pbkd->raw, cv::Size(width, height));
+            pbkd->bg_stored = true;
+        }
+        out = pbkd->raw ;
+        frm = 1;
+    }
     return frm;
 }
 
