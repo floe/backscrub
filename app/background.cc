@@ -200,7 +200,7 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
             cv::resize(pbkd->raw, pbkd->raw, cv::Size(width, height));
             pbkd->bg_stored = true;
         }
-        out = pbkd->raw ;
+        out = pbkd->raw;
         frm = 1;
     }
     return frm;
