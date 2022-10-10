@@ -28,6 +28,7 @@ struct background_t {
     int frame;
     int cnt;
     double fps;
+    cv::Rect cropRegion;
     cv::Mat raw;
     bool bg_stored;
     std::mutex rawmux;
@@ -148,6 +149,7 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
         pbkd->video = false;
         pbkd->run = false;
         pbkd->bg_stored = false;
+        pbkd->cropRegion = {-1, -1, -1, -1};
 
 #if HAVE_IMCOUNT
         size_t images = cv::imcount(path.c_str());
@@ -223,10 +225,17 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
     if (pbkd->video) {
         // grab frame & frame no. under mutex
         std::unique_lock<std::mutex> hold(pbkd->rawmux);
-        cv::Rect crop = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
-        cv::Mat tmp;
-        pbkd->raw(crop).copyTo(tmp);
-        cv::resize(tmp, out, cv::Size(width, height));
+        if ( pbkd->cropRegion.x < 0 ) { // calculate cropping if not already done
+            pbkd->cropRegion = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+        }
+        // Perform cropping if necessary
+        if ( pbkd->cropRegion.x || pbkd->cropRegion.y ) {
+            cv::Mat tmp;
+            pbkd->raw(pbkd->cropRegion).copyTo(tmp);
+            cv::resize(tmp, out, cv::Size(width, height));
+        } else {
+            cv::resize(pbkd->raw, out, cv::Size(width, height));
+        }
         frm = pbkd->frame;
     } else {
         if (!pbkd->bg_stored) {

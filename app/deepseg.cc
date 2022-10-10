@@ -570,10 +570,10 @@ int main(int argc, char* argv[]) try {
 		fprintf(stderr, "Warning: virtual camera aspect ratio does not match capture device.\n");
 	}
 	// calculate crop region, only if result always smaller
-	if (expWidth != vidGeo->first) {
+	if (capGeo != vidGeo) {
 		crop_region = bs_calc_cropping(
-		              capGeo->first, capGeo->second,
-		              vidGeo->first, vidGeo->second);
+		               capGeo->first, capGeo->second,
+		               vidGeo->first, vidGeo->second);
 	}
 
 	// dump settings..
@@ -608,7 +608,7 @@ int main(int argc, char* argv[]) try {
 	}
 	// default green screen background (at capture true geometry)
 	std::pair<size_t, size_t> bg_dim = *capGeo;
-	if (crop_region.height) {
+	if (crop_region.x || crop_region.y) {
 		bg_dim = {crop_region.width, crop_region.height};
 	}
 	cv::Mat bg(bg_dim.second, bg_dim.first, CV_8UC3, cv::Scalar(0, 255, 0));
@@ -626,14 +626,14 @@ int main(int argc, char* argv[]) try {
 
 	// Processing components, all at capture true geometry
 	std::pair<size_t, size_t> mask_dim = *capGeo;
-	if (crop_region.height) {
+	if (crop_region.x || crop_region.y) {
 		mask_dim = {crop_region.width, crop_region.height};
 	}
 	cv::Mat mask(mask_dim.second, mask_dim.first, CV_8U);
 
 	cv::Mat raw;
 	int aiw,aih;
-	if (!crop_region.width) {
+	if (!(crop_region.x || crop_region.y)) {
 		aiw=capGeo->first;
 		aih=capGeo->second;
 	} else {
@@ -658,7 +658,7 @@ int main(int argc, char* argv[]) try {
 
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
-		if (crop_region.height) {
+		if (crop_region.x || crop_region.y) {
 			raw(crop_region).copyTo(raw);
 		}
 		ai.set_input_frame(raw);
@@ -676,7 +676,7 @@ int main(int argc, char* argv[]) try {
 			bool canBlur = false;
 			if (pbk) {
 				int tw,th;
-				if (crop_region.height) {
+				if (crop_region.x || crop_region.y) {
 					tw = crop_region.width;
 					th = crop_region.height;
 				} else {
