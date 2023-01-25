@@ -365,7 +365,11 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 
 	// scale up into full-sized mask
 	cv::Mat tmpbuf;
-	cv::resize(ctx.ofinal(ctx.in_roidim),tmpbuf,ctx.mroi.size());
+	// with body-pix-float-050-8.tflite the size of ctx.ofinal is 33x33
+	// and the wanted roi may be greater as 33x33 so we can crash with
+	// cv::resize(ctx.ofinal(ctx.in_roidim),tmpbuf,ctx.mroi.size());
+	ctx.ofinal.copyTo(tmpbuf);
+	cv::resize(tmpbuf, tmpbuf, ctx.mroi.size());
 
 	// blur at full size for maximum smoothness
 	cv::blur(tmpbuf,ctx.mroi,ctx.blur);
@@ -375,3 +379,24 @@ bool bs_maskgen_process(void *context, cv::Mat &frame, cv::Mat &mask) {
 	return true;
 }
 
+cv::Rect bs_calc_cropping(int inWidth, int inHeight, int targetWidth, int targetHigh) {
+	// if the input and output aspect ratio are not the same
+	// we can crop the source image. For example if the
+	// input image has a 16:9 (1280x720) ratio and the output is 4:3 (960x720)
+	// we will return the cropRegion set as x=160, width=960, y=0, height=720
+	// which is the centered part of the original image
+	cv::Rect cropRegion = {0, 0, 0, 0};
+	float sc = (float)targetWidth / inWidth;
+	float st = (float)targetHigh / inHeight;
+	sc = st > sc ? st : sc;
+
+	int sx = (int)(targetWidth / sc) - inWidth;
+	cropRegion.x =  (sx < 0 ? -sx : sx) / 2;
+
+	int sy = (int)(targetHigh / sc) - inHeight;
+	cropRegion.y =  (sy < 0 ? -sy : sy) / 2;
+
+	cropRegion.width = inWidth - cropRegion.x * 2;
+	cropRegion.height = inHeight - cropRegion.y * 2;
+	return cropRegion;
+}

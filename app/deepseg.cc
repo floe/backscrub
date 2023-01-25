@@ -84,7 +84,7 @@ std::optional<std::pair<size_t, size_t>> geometryFromString(const std::string& i
 }
 
 // OpenCV helper functions
-cv::Mat convert_rgb_to_yuyv( cv::Mat input ) {
+cv::Mat convert_rgb_to_yuyv(cv::Mat input) {
 	cv::Mat tmp;
 	cv::cvtColor(input, tmp, cv::COLOR_RGB2YUV);
 	std::vector<cv::Mat> yuv;
@@ -372,6 +372,7 @@ int main(int argc, char* argv[]) try {
 	bool flipVertical = false;
 	int fourcc = 0;
 	size_t blur_strength = 0;
+	cv::Rect crop_region(0, 0, 0, 0);
 
 	const char* modelname = "selfiesegmentation_mlkit-256x256-2021_01_19-v1215.f16.tflite";
 
@@ -568,6 +569,12 @@ int main(int argc, char* argv[]) try {
 	if (expWidth != vidGeo.value().first) {
 		fprintf(stderr, "Warning: virtual camera aspect ratio does not match capture device.\n");
 	}
+	// calculate crop region, only if result always smaller
+	if (capGeo != vidGeo) {
+		crop_region = bs_calc_cropping(
+		               capGeo->first, capGeo->second,
+		               vidGeo->first, vidGeo->second);
+	}
 
 	// dump settings..
 	printf("debug:  %d\n", debug);
@@ -600,7 +607,11 @@ int main(int argc, char* argv[]) try {
 		}
 	}
 	// default green screen background (at capture true geometry)
-	cv::Mat bg = cv::Mat(capGeo.value().second, capGeo.value().first, CV_8UC3, cv::Scalar(0, 255, 0));
+	std::pair<size_t, size_t> bg_dim = *capGeo;
+	if (crop_region.x || crop_region.y) {
+		bg_dim = {crop_region.width, crop_region.height};
+	}
+	cv::Mat bg(bg_dim.second, bg_dim.first, CV_8UC3, cv::Scalar(0, 255, 0));
 
 	// Virtual camera (at specified geometry)
 	int lbfd = loopback_init(s_vcam, vidGeo.value().first, vidGeo.value().second, debug);
@@ -613,11 +624,24 @@ int main(int argc, char* argv[]) try {
 		loopback_free(lbfd);
 	});
 
-
 	// Processing components, all at capture true geometry
-	cv::Mat mask(capGeo.value().second, capGeo.value().first, CV_8U);
+	std::pair<size_t, size_t> mask_dim = *capGeo;
+	if (crop_region.x || crop_region.y) {
+		mask_dim = {crop_region.width, crop_region.height};
+	}
+	cv::Mat mask(mask_dim.second, mask_dim.first, CV_8U);
+
 	cv::Mat raw;
-	CalcMask ai(s_model.value(), threads, capGeo.value().first, capGeo.value().second);
+	int aiw,aih;
+	if (!(crop_region.x || crop_region.y)) {
+		aiw=capGeo->first;
+		aih=capGeo->second;
+	} else {
+		aiw=crop_region.width;
+		aih=crop_region.height;
+	}
+	CalcMask ai(*s_model, threads, aiw, aih);
+
 	ti.lastns = timestamp();
 	printf("Startup: %ldns\n", diffnanosecs(ti.lastns,ti.bootns));
 
@@ -631,22 +655,35 @@ int main(int argc, char* argv[]) try {
 		// copy new frame to buffer
 		cap.retrieve(raw);
 		ti.retrns = timestamp();
-		ai.set_input_frame(raw);
-		ti.copyns = timestamp();
 
 		if (raw.rows == 0 || raw.cols == 0) continue; // sanity check
 
-		if (filterActive) {
-			// do background detection magic
-			ai.get_output_mask(mask);
+		if (crop_region.x || crop_region.y) {
+			raw(crop_region).copyTo(raw);
+		}
+		ai.set_input_frame(raw);
+		ti.copyns = timestamp();
 
+		// do background detection magic
+		ai.get_output_mask(mask);
+		ti.copyns = timestamp();
+
+		if (filterActive) {
 			// get background frame:
 			// - specified source if set
 			// - copy of input video if blur_strength != 0
 			// - default green (initial value)
 			bool canBlur = false;
 			if (pbk) {
-				if (grab_background(pbk, capGeo.value().first, capGeo.value().second, bg)<0)
+				int tw,th;
+				if (crop_region.x || crop_region.y) {
+					tw = crop_region.width;
+					th = crop_region.height;
+				} else {
+					tw = capGeo->first;
+					th = capGeo->second;
+				}
+				if (grab_background(pbk, tw, th, bg) < 0)
 					throw "Failed to read background frame";
 				canBlur = true;
 			} else if (blur_strength) {

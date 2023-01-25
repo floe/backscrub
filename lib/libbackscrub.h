@@ -38,4 +38,6 @@ extern void bs_maskgen_delete(void *context);
 // Process a video frame into a mask
 extern bool bs_maskgen_process(void *context, cv::Mat& frame, cv::Mat &mask);
 
+extern cv::Rect bs_calc_cropping(int inWidth, int inHeight, int targetWidth, int targetHight);
+
 #endif

@@ -9,6 +9,16 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
+#include <lib/libbackscrub.h>
+
+#if CV_VERSION_MAJOR < 4 ||\
+    CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR < 5 ||\
+    CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR == 5 && CV_VERSION_REVISION < 3
+# define HAVE_IMCOUNT 0
+#else
+# define HAVE_IMCOUNT 1
+#endif
+
 // Internal state of background processing
 struct background_t {
     int debug;
@@ -16,8 +26,11 @@ struct background_t {
     volatile bool run;
     cv::VideoCapture cap;
     int frame;
+    int cnt;
     double fps;
+    cv::Rect cropRegion;
     cv::Mat raw;
+    bool bg_stored;
     std::mutex rawmux;
     cv::Mat thumb;
     std::mutex thumbmux;
@@ -57,6 +70,11 @@ static void read_thread(std::weak_ptr<background_t> weak) {
                 std::unique_lock<std::mutex> hold(pbkd->rawmux);
                 grab.copyTo(pbkd->raw);
                 pbkd->frame += 1;
+            }
+            // if last frame reached (gstreamer and GIF file) set to frame 0
+            if (pbkd->frame == pbkd->cnt) {
+                pbkd->cap.set(cv::CAP_PROP_POS_FRAMES, 0);
+                pbkd->frame = 0;
             }
             // grab timing point
             auto now = std::chrono::steady_clock::now();
@@ -130,6 +148,14 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
         pbkd->debug = debug;
         pbkd->video = false;
         pbkd->run = false;
+        pbkd->bg_stored = false;
+        pbkd->cropRegion = {-1, -1, -1, -1};
+
+#if HAVE_IMCOUNT
+        size_t images = cv::imcount(path.c_str());
+#else
+        size_t images = 0;
+#endif
         pbkd->cap.open(path, cv::CAP_ANY);    // explicitly ask for auto-detection of backend
         if (!pbkd->cap.isOpened()) {
             if (pbkd->debug) fprintf(stderr, "background: cap cannot open: %s\n", path.c_str());
@@ -139,23 +165,39 @@ std::shared_ptr<background_t> load_background(const std::string& path, int debug
         int fcc = (int)pbkd->cap.get(cv::CAP_PROP_FOURCC);
         pbkd->fps = pbkd->cap.get(cv::CAP_PROP_FPS);
         int cnt = (int)pbkd->cap.get(cv::CAP_PROP_FRAME_COUNT);
+        pbkd->cnt = cnt;
+#if !HAVE_IMCOUNT
+        if ( cnt < 0 )
+             images = 1;
+#endif
         // Here be the logic...
-        //  if: can read 2 video frames => it's a video
-        //  else: is loaded as an image => it's an image
+        //  if:  count > 1 it's a video
+        //  else: if cnt < 1 it´s is a still image
+        //  else: if cnt = 1 it´s is a static gif file
         //  else: it's not usable.
-        if (pbkd->cap.read(pbkd->raw) && pbkd->cap.read(pbkd->raw)) {
+        if (cnt > 1) {
+            if (!pbkd->cap.read(pbkd->raw)) {
+                if (pbkd->debug) fprintf(stderr, "background: read failed %s\n", path.c_str());
+                return nullptr;
+            }
             // it's a video, try a reset and start reader thread..
             if (pbkd->cap.set(cv::CAP_PROP_POS_FRAMES, 0))
                 pbkd->frame = 0;
             else
-                pbkd->frame = 2;    // unable to reset, so we're 2 frames in
+                pbkd->frame = 1;    // unable to reset, so we're 1 frames in
             pbkd->video = true;
             pbkd->run = true;
             pbkd->thread = std::thread(read_thread, std::weak_ptr<background_t>(pbkd));
         } else {
             // static image file, try loading..
-            pbkd->cap.release();
-            pbkd->raw = cv::imread(path);
+            if (cnt < 0) {
+                pbkd->cap.release();
+                pbkd->raw = cv::imread(path);
+            } else if (cnt == 1) {
+                // this is a static gif file with 1 frame
+                pbkd->cap.read(pbkd->raw);
+                pbkd->cap.release();
+            }
             if (pbkd->raw.empty()) {
                 if (pbkd->debug) fprintf(stderr, "background: imread cannot open: %s\n", path.c_str());
                 return nullptr;
@@ -179,15 +221,33 @@ int grab_background(std::shared_ptr<background_t> pbkd, int width, int height, c
     if (!pbkd)
         return -1;
     // static image or video?
-    int frm ;
+    int frm;
     if (pbkd->video) {
         // grab frame & frame no. under mutex
         std::unique_lock<std::mutex> hold(pbkd->rawmux);
-        cv::resize(pbkd->raw, out, cv::Size(width, height));
+        if ( pbkd->cropRegion.x < 0 ) { // calculate cropping if not already done
+            pbkd->cropRegion = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+        }
+        // Perform cropping if necessary
+        if ( pbkd->cropRegion.x || pbkd->cropRegion.y ) {
+            cv::Mat tmp;
+            pbkd->raw(pbkd->cropRegion).copyTo(tmp);
+            cv::resize(tmp, out, cv::Size(width, height));
+        } else {
+            cv::resize(pbkd->raw, out, cv::Size(width, height));
+        }
         frm = pbkd->frame;
     } else {
-        // resize still image as requested into out
-        cv::resize(pbkd->raw, out, cv::Size(width, height));
+        if (!pbkd->bg_stored) {
+            // resize still image as requested into out
+            cv::Rect crop = bs_calc_cropping(pbkd->raw.cols, pbkd->raw.rows, width, height);
+            // Under some circumstances we must do the job in two steps!
+            // Otherwise this resize(pbkd->raw(crop), pbkd->raw, ...) may fail.
+            pbkd->raw(crop).copyTo(pbkd->raw);
+            cv::resize(pbkd->raw, pbkd->raw, cv::Size(width, height));
+            pbkd->bg_stored = true;
+        }
+        out = pbkd->raw;
         frm = 1;
     }
     return frm;
